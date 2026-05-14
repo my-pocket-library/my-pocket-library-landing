@@ -208,10 +208,34 @@ export function Book({ cover }: BookProps) {
     };
   }, [cover]);
 
+  const gradientMapRef = useRef<THREE.DataTexture | null>(null);
+  const bandsRef = useRef<number>(0);
+
+  // Build a gradient ramp texture used by MeshToonMaterial for the banded look.
+  // Lazily (re)built when the desired band count changes.
+  const ensureGradient = (bands: number) => {
+    if (bandsRef.current === bands && gradientMapRef.current) {
+      return gradientMapRef.current;
+    }
+    gradientMapRef.current?.dispose();
+    const data = new Uint8Array(bands);
+    for (let i = 0; i < bands; i++) {
+      data[i] = Math.floor(((i + 1) / bands) * 255);
+    }
+    const tex = new THREE.DataTexture(data, bands, 1, THREE.RedFormat);
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    gradientMapRef.current = tex;
+    bandsRef.current = bands;
+    return tex;
+  };
+
   // Materials per face order: +X, -X, +Y, -Y, +Z, -Z
   // +X right (page edge), -X left (spine), +Y top (pages), -Y bottom (pages),
   // +Z front (cover), -Z back (cover dark)
-  const materials = useMemo(() => {
+  const standardMaterials = useMemo(() => {
     const pages = new THREE.MeshStandardMaterial({
       map: pagesTex,
       roughness: 0.95,
@@ -231,11 +255,25 @@ export function Book({ cover }: BookProps) {
     return [pages, spine, pages, pages, front, back];
   }, [coverTex, spineTex, pagesTex, cover.baseColor]);
 
-  // Imperatively swap the BoxGeometry when size params change.
-  // Avoids re-rendering the React tree, which was causing books to flicker.
+  const toonMaterials = useMemo(() => {
+    const gradientMap = ensureGradient(PARAMS.toonBands);
+    const pages = new THREE.MeshToonMaterial({ map: pagesTex, gradientMap });
+    const spine = new THREE.MeshToonMaterial({ map: spineTex, gradientMap });
+    const front = new THREE.MeshToonMaterial({ map: coverTex, gradientMap });
+    const back = new THREE.MeshToonMaterial({
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.55),
+      gradientMap,
+    });
+    return [pages, spine, pages, pages, front, back];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverTex, spineTex, pagesTex, cover.baseColor]);
+
+  // Imperatively swap geometry size + active material set each frame so
+  // tweakpane edits don't require React re-renders (which caused flickering).
   useFrame(() => {
     const m = meshRef.current;
     if (!m) return;
+
     const [lw, lh, ld] = sizeRef.current;
     if (
       lw !== PARAMS.bookWidth ||
@@ -254,16 +292,31 @@ export function Book({ cover }: BookProps) {
         PARAMS.bookDepth,
       ];
     }
+
+    // Refresh the toon gradient ramp if band count was tweaked.
+    if (PARAMS.toonShading && bandsRef.current !== PARAMS.toonBands) {
+      const ramp = ensureGradient(PARAMS.toonBands);
+      for (const mat of toonMaterials) {
+        (mat as THREE.MeshToonMaterial).gradientMap = ramp;
+        (mat as THREE.MeshToonMaterial).needsUpdate = true;
+      }
+    }
+
+    const desired = PARAMS.toonShading ? toonMaterials : standardMaterials;
+    if (m.material !== desired) {
+      m.material = desired;
+    }
   });
 
   useEffect(() => {
     return () => {
       meshRef.current?.geometry.dispose();
+      gradientMapRef.current?.dispose();
     };
   }, []);
 
   return (
-    <mesh ref={meshRef} castShadow receiveShadow material={materials}>
+    <mesh ref={meshRef} castShadow receiveShadow material={standardMaterials}>
       <boxGeometry
         args={[PARAMS.bookWidth, PARAMS.bookHeight, PARAMS.bookDepth]}
       />

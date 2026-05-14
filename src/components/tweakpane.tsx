@@ -7,15 +7,23 @@ import { PARAMS, type SceneParams } from "@/lib/scene-params";
 // Tweakpane v4 ships incomplete public types for addFolder / addBinding
 // (the methods exist at runtime via FolderApi). Cast at the boundary.
 type BindingOpts = { min?: number; max?: number; step?: number };
+type Binding = {
+  on: (event: "change", cb: () => void) => Binding;
+};
 type Folder = {
-  addBinding: (target: object, key: string, opts?: BindingOpts) => unknown;
+  addBinding: (target: object, key: string, opts?: BindingOpts) => Binding;
 };
 type PaneLike = Folder & {
   addFolder: (cfg: { title: string; expanded?: boolean }) => Folder;
   dispose: () => void;
 };
 
-export function Tweakpane() {
+type Props = {
+  /** Fired when toggles that need a React re-render change (e.g. celOutline). */
+  onPostToggle?: () => void;
+};
+
+export function Tweakpane({ onPostToggle }: Props = {}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<PaneLike | null>(null);
 
@@ -88,11 +96,20 @@ export function Tweakpane() {
     lights.addBinding(PARAMS, "rimIntensity", { min: 0, max: 3, step: 0.05 });
     lights.addBinding(PARAMS, "envIntensity", { min: 0, max: 3, step: 0.05 });
 
+    const post = pane.addFolder({ title: "Post", expanded: true });
+    post.addBinding(PARAMS, "toonShading");
+    post.addBinding(PARAMS, "toonBands", { min: 2, max: 8, step: 1 });
+    post
+      .addBinding(PARAMS, "celOutline")
+      .on("change", () => onPostToggle?.());
+    post.addBinding(PARAMS, "outlineStrength", { min: 0.5, max: 10, step: 0.1 });
+    post.addBinding(PARAMS, "outlineThickness", { min: 1, max: 8, step: 0.5 });
+
     return () => {
       pane.dispose();
       paneRef.current = null;
     };
-  }, []);
+  }, [onPostToggle]);
 
   return (
     <div

@@ -42,6 +42,13 @@ export type SceneParams = {
   fillIntensity: number;
   rimIntensity: number;
   envIntensity: number;
+
+  // Post / stylization
+  toonShading: boolean;
+  toonBands: number;
+  celOutline: boolean;
+  outlineStrength: number;
+  outlineThickness: number;
 };
 
 export const PARAMS: SceneParams = {
@@ -78,5 +85,11 @@ export const PARAMS: SceneParams = {
   fillIntensity: 0.6,
   rimIntensity: 0.9,
   envIntensity: 0.95,
+
+  toonShading: false,
+  toonBands: 4,
+  celOutline: false,
+  outlineStrength: 3,
+  outlineThickness: 2,
 };
 

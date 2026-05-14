@@ -1,8 +1,15 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
-import { type RefObject, Suspense, useEffect, useRef } from "react";
+import { EffectComposer, Outline } from "@react-three/postprocessing";
+import { BlendFunction, KernelSize } from "postprocessing";
+import {
+  type RefObject,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Core from "smooothy";
 import * as THREE from "three";
 import { Book, type BookCover } from "./book";
@@ -124,12 +131,23 @@ function wrapToRange(value: number, half: number): number {
 
 type BooksProps = {
   sliderRef: RefObject<Core | null>;
+  onMeshesReady?: (objects: THREE.Object3D[]) => void;
 };
 
-function Books({ sliderRef }: BooksProps) {
+function Books({ sliderRef, onMeshesReady }: BooksProps) {
   const refs = useRef<(THREE.Group | null)[]>([]);
+  const reportedRef = useRef(false);
 
   useFrame((state) => {
+    if (!reportedRef.current && onMeshesReady) {
+      const all = refs.current.filter(
+        (n): n is THREE.Group => n !== null,
+      );
+      if (all.length === COVERS.length) {
+        reportedRef.current = true;
+        onMeshesReady(all);
+      }
+    }
     const slider = sliderRef.current;
     if (slider) {
       slider.config.lerpFactor = PARAMS.lerpFactor;
@@ -264,9 +282,19 @@ function LiveFog() {
   );
 }
 
-export function BookScene() {
+type BookSceneProps = {
+  /** Bump to force a re-render when post-processing toggles change. */
+  postVersion?: number;
+};
+
+export function BookScene({ postVersion = 0 }: BookSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<Core | null>(null);
+  const [bookObjects, setBookObjects] = useState<THREE.Object3D[]>([]);
+  // Read once per render so toggling them via tweakpane re-mounts the composer.
+  const outlineOn = PARAMS.celOutline;
+  // postVersion is the trigger for re-renders; reference it so React keeps it.
+  void postVersion;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -317,11 +345,21 @@ export function BookScene() {
         <LiveLights />
 
         <Suspense fallback={null}>
-          <Books sliderRef={sliderRef} />
-          <Environment
-            preset="city"
-            environmentIntensity={PARAMS.envIntensity}
-          />
+          <Books sliderRef={sliderRef} onMeshesReady={setBookObjects} />
+          {outlineOn && bookObjects.length > 0 ? (
+            <EffectComposer>
+              <Outline
+                selection={bookObjects}
+                edgeStrength={PARAMS.outlineStrength * 20}
+                visibleEdgeColor={0x000000}
+                hiddenEdgeColor={0x000000}
+                blur={false}
+                xRay={false}
+                kernelSize={KernelSize.VERY_SMALL}
+                blendFunction={BlendFunction.ALPHA}
+              />
+            </EffectComposer>
+          ) : null}
         </Suspense>
       </Canvas>
     </div>
