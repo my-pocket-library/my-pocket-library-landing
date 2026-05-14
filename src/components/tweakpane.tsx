@@ -4,14 +4,28 @@ import { useEffect, useRef } from "react";
 import { Pane } from "tweakpane";
 import { PARAMS, type SceneParams } from "@/lib/scene-params";
 
+// Tweakpane v4 ships incomplete public types for addFolder / addBinding
+// (the methods exist at runtime via FolderApi). Cast at the boundary.
+type BindingOpts = { min?: number; max?: number; step?: number };
+type Folder = {
+  addBinding: (target: object, key: string, opts?: BindingOpts) => unknown;
+};
+type PaneLike = Folder & {
+  addFolder: (cfg: { title: string; expanded?: boolean }) => Folder;
+  dispose: () => void;
+};
+
 export function Tweakpane() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const paneRef = useRef<Pane | null>(null);
+  const paneRef = useRef<PaneLike | null>(null);
 
   useEffect(() => {
     if (!hostRef.current) return;
 
-    const pane = new Pane({ container: hostRef.current, title: "Controls" });
+    const pane = new Pane({
+      container: hostRef.current,
+      title: "Controls",
+    }) as unknown as PaneLike;
     paneRef.current = pane;
 
     const carousel = pane.addFolder({ title: "Carousel", expanded: true });
