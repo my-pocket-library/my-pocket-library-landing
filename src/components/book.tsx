@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three-stdlib";
@@ -61,6 +61,13 @@ type BookProps = {
   cover: BookCover;
   /** Stable book index — drives per-book wear, ribbon, and color variation. */
   index?: number;
+  /** Ref containing target opacity 0..1 — Books-level state can fade individual
+   *  books for the selection animation. Read every frame; if changed, applied
+   *  imperatively to all of this book's materials (no React re-render). */
+  opacityRef?: RefObject<number>;
+  /** Ref containing the wireframe-overlay opacity 0..1. Non-zero when this
+   *  book is the centered selection. */
+  wireframeOpacityRef?: RefObject<number>;
 };
 
 // ---------------------------------------------------------------------------
@@ -668,11 +675,20 @@ function bowCoverGeometry(geom: THREE.BufferGeometry, bowAmount: number) {
   geom.computeVertexNormals();
 }
 
-export function Book({ cover, index = 0 }: BookProps) {
+export function Book({
+  cover,
+  index = 0,
+  opacityRef,
+  wireframeOpacityRef,
+}: BookProps) {
   const coverMeshRef = useRef<THREE.Mesh>(null);
   const paperMeshRef = useRef<THREE.Mesh>(null);
   const ribbonRef = useRef<THREE.Mesh>(null);
+  const wireframeMeshRef = useRef<THREE.Mesh>(null);
+  const fillMeshRef = useRef<THREE.Mesh>(null);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
+  const lastOpacityRef = useRef(1);
+  const lastWireframeOpacityRef = useRef(0);
 
   const wear = useMemo(() => getWearAmount(index), [index]);
   const showRibbon = useMemo(() => hasBookmarkRibbon(index), [index]);
@@ -904,6 +920,27 @@ export function Book({ cover, index = 0 }: BookProps) {
       );
       paperMesh.position.set(layout.offsetX, 0, 0);
 
+      // Wireframe + fill overlays — same cover shape. The fill renders a
+      // dark backdrop inside the stencil mask so the wireframe lines read
+      // clearly without the painted cover bleeding through.
+      const wfScale = 1.012;
+      const fill = fillMeshRef.current;
+      if (fill) {
+        fill.geometry.dispose();
+        fill.geometry = new RoundedBoxGeometry(w, h, d, 4, radius);
+      }
+      const wireframe = wireframeMeshRef.current;
+      if (wireframe) {
+        wireframe.geometry.dispose();
+        wireframe.geometry = new RoundedBoxGeometry(
+          w * wfScale,
+          h * wfScale,
+          d * wfScale,
+          4,
+          radius * wfScale,
+        );
+      }
+
       // Reposition the ribbon (if this book has one) to hang from inside the
       // paper block and stick out a small overhang below the bottom edge.
       const ribbon = ribbonRef.current;
@@ -945,12 +982,58 @@ export function Book({ cover, index = 0 }: BookProps) {
     if (paperMesh.material !== desired.paper) {
       paperMesh.material = desired.paper;
     }
+
+    // Apply the externally-driven opacity to every material on this book.
+    // Skip the work if nothing changed; flip `transparent` only on the
+    // transitions so opaque books still hit the fast opaque render path.
+    const targetOpacity = opacityRef?.current ?? 1;
+    if (targetOpacity !== lastOpacityRef.current) {
+      const transparent = targetOpacity < 0.999;
+      const apply = (mat: THREE.Material) => {
+        mat.opacity = targetOpacity;
+        if (mat.transparent !== transparent) {
+          mat.transparent = transparent;
+          mat.needsUpdate = true;
+        }
+      };
+      for (const m of standardMaterials.cover) apply(m);
+      apply(standardMaterials.paper);
+      for (const m of toonMaterials.cover) apply(m);
+      apply(toonMaterials.paper);
+      const ribbon = ribbonRef.current;
+      if (ribbon) apply(ribbon.material as THREE.Material);
+      lastOpacityRef.current = targetOpacity;
+    }
+
+    // Wireframe + fill overlay visibility — controlled by the per-book
+    // wireframeOpacityRef written by Books. Both meshes are stencil-tested
+    // (stencilRef=1, set by the MaskPlane) so they only draw inside the
+    // mouse-tracked rectangle.
+    const targetWf = wireframeOpacityRef?.current ?? 0;
+    if (targetWf !== lastWireframeOpacityRef.current) {
+      const visible = targetWf > 0.001;
+      const wf = wireframeMeshRef.current;
+      if (wf) {
+        const wfMat = wf.material as THREE.MeshBasicMaterial;
+        wfMat.opacity = targetWf;
+        wf.visible = visible;
+      }
+      const fill = fillMeshRef.current;
+      if (fill) {
+        const fillMat = fill.material as THREE.MeshBasicMaterial;
+        fillMat.opacity = targetWf;
+        fill.visible = visible;
+      }
+      lastWireframeOpacityRef.current = targetWf;
+    }
   });
 
   useEffect(() => {
     return () => {
       coverMeshRef.current?.geometry.dispose();
       paperMeshRef.current?.geometry.dispose();
+      wireframeMeshRef.current?.geometry.dispose();
+      fillMeshRef.current?.geometry.dispose();
       gradientMapRef.current?.dispose();
     };
   }, []);
@@ -974,6 +1057,48 @@ export function Book({ cover, index = 0 }: BookProps) {
         material={standardMaterials.paper}
       >
         <boxGeometry args={[1, 1, 1]} />
+      </mesh>
+      {/* Dark fill behind the wireframe — only renders inside the mouse-
+       *  tracked stencil mask. Replaces the cover artwork with a flat dark
+       *  backdrop so the white wireframe lines read clearly.
+       *  NOTE: stencilWrite must be `true` here — three.js only enables the
+       *  STENCIL_TEST in WebGL when a material has stencilWrite=true. To use
+       *  the stencil as a *reader* without modifying it, the op fields are
+       *  all KeepStencilOp. */}
+      <mesh ref={fillMeshRef} visible={false} renderOrder={2}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial
+          color="#15171c"
+          transparent
+          opacity={0}
+          depthWrite={false}
+          depthTest={false}
+          stencilWrite
+          stencilFunc={THREE.EqualStencilFunc}
+          stencilRef={1}
+          stencilZPass={THREE.KeepStencilOp}
+          stencilZFail={THREE.KeepStencilOp}
+          stencilFail={THREE.KeepStencilOp}
+        />
+      </mesh>
+      {/* Wireframe — slightly outscaled so the grid sits visibly outside the
+       *  fill. Stencil-tested with the same Equal-ref-1 setup as the fill. */}
+      <mesh ref={wireframeMeshRef} visible={false} renderOrder={3}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial
+          color="#ffffff"
+          wireframe
+          transparent
+          opacity={0}
+          depthWrite={false}
+          depthTest={false}
+          stencilWrite
+          stencilFunc={THREE.EqualStencilFunc}
+          stencilRef={1}
+          stencilZPass={THREE.KeepStencilOp}
+          stencilZFail={THREE.KeepStencilOp}
+          stencilFail={THREE.KeepStencilOp}
+        />
       </mesh>
       {showRibbon ? (
         <mesh ref={ribbonRef}>
