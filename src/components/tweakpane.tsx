@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Pane } from "tweakpane";
 import { PARAMS, type SceneParams } from "@/lib/scene-params";
 
@@ -26,6 +27,12 @@ type Props = {
 export function Tweakpane({ onPostToggle }: Props = {}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<PaneLike | null>(null);
+  // Only render the portal after mount so document.body is available (SSR safe).
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -65,7 +72,11 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
     sizeKeys.forEach((k) => {
       books.addBinding(PARAMS, k, { min: 0.1, max: 4, step: 0.01 });
     });
-    books.addBinding(PARAMS, "spacing", { min: 0.1, max: 2, step: 0.01 });
+    books.addBinding(PARAMS, "circleRadius", {
+      min: 0.5,
+      max: 14,
+      step: 0.05,
+    });
     books.addBinding(PARAMS, "rotationY", { min: -1.5, max: 1.5, step: 0.01 });
     books.addBinding(PARAMS, "rotationVariance", {
       min: 0,
@@ -96,6 +107,58 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
     lights.addBinding(PARAMS, "rimIntensity", { min: 0, max: 3, step: 0.05 });
     lights.addBinding(PARAMS, "envIntensity", { min: 0, max: 3, step: 0.05 });
 
+    const compass = pane.addFolder({ title: "Compass", expanded: false });
+    compass.addBinding(PARAMS, "compassEnabled");
+    compass.addBinding(PARAMS, "compassScale", {
+      min: 0.1,
+      max: 3,
+      step: 0.05,
+    });
+    compass.addBinding(PARAMS, "compassY", { min: -3, max: 3, step: 0.05 });
+    compass.addBinding(PARAMS, "compassTilt", {
+      min: -1.5,
+      max: 1.5,
+      step: 0.01,
+    });
+    compass.addBinding(PARAMS, "compassWobble", {
+      min: 0,
+      max: 0.6,
+      step: 0.01,
+    });
+    compass.addBinding(PARAMS, "compassRingsSpeed", {
+      min: -2,
+      max: 2,
+      step: 0.05,
+    });
+    compass.addBinding(PARAMS, "compassSpokesSpeed", {
+      min: -2,
+      max: 2,
+      step: 0.05,
+    });
+    compass.addBinding(PARAMS, "compassPlanetSpeed", {
+      min: -3,
+      max: 3,
+      step: 0.05,
+    });
+
+    const sparkle = pane.addFolder({ title: "Sparkles", expanded: false });
+    sparkle.addBinding(PARAMS, "sparkleEnabled");
+    sparkle.addBinding(PARAMS, "sparkleSpeed", {
+      min: 0,
+      max: 4,
+      step: 0.05,
+    });
+    sparkle.addBinding(PARAMS, "sparkleLifetime", {
+      min: 0.3,
+      max: 5,
+      step: 0.05,
+    });
+    sparkle.addBinding(PARAMS, "sparkleSize", {
+      min: 0.005,
+      max: 0.15,
+      step: 0.005,
+    });
+
     const post = pane.addFolder({ title: "Post", expanded: true });
     post.addBinding(PARAMS, "toonShading");
     post.addBinding(PARAMS, "toonBands", { min: 2, max: 8, step: 1 });
@@ -109,12 +172,17 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
       pane.dispose();
       paneRef.current = null;
     };
-  }, [onPostToggle]);
+  }, [onPostToggle, mounted]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       ref={hostRef}
-      className="fixed right-4 top-4 z-50 w-72 [&_.tp-rotv]:!font-mono"
-    />
+      // z-[2147483647] = the max safe int — guarantees the pane sits above
+      // any ancestor stacking context introduced elsewhere on the page.
+      className="fixed right-4 top-4 z-[2147483647] w-72 [&_.tp-rotv]:!font-mono"
+    />,
+    document.body,
   );
 }

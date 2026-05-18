@@ -7,6 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ana-1: var(--ana-1);
+  --color-ana-2: var(--ana-2);
+  --color-ana-3: var(--ana-3);
+  --color-ana-4: var(--ana-4);
+  --color-ana-5: var(--ana-5);
+  --color-ana-6: var(--ana-6);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
@@ -49,8 +55,16 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Ana palette — warm cream/peach */
+  --ana-1: oklch(95% 0.013 77.9);
+  --ana-2: oklch(65.4% 0.089 57.9);
+  --ana-3: oklch(75.4% 0.089 67.9);
+  --ana-4: oklch(89.4% 0.027 85.9);
+  --ana-5: oklch(95% 0.027 95.9);
+  --ana-6: oklch(95% 0.027 108);
+
+  --background: var(--ana-1);
+  --foreground: oklch(0 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);

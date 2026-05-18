@@ -16,7 +16,7 @@ export function Navbar() {
         <div className="flex items-center gap-10">
           <Link
             href="/"
-            className="font-serif text-xl tracking-tight text-white"
+            className="font-serif text-xl tracking-tight text-black"
           >
             <span className="italic">My</span>{" "}
             <span className="font-medium">Pocket Library</span>
@@ -26,7 +26,7 @@ export function Navbar() {
               <Link
                 key={link.label}
                 href={link.href}
-                className="group inline-flex items-center gap-1 text-sm text-white/80 transition-colors hover:text-white"
+                className="group inline-flex items-center gap-1 text-sm text-black/70 transition-colors hover:text-black"
               >
                 {link.label}
                 <ChevronDown
@@ -40,11 +40,11 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
-            className="rounded-full border border-white/15 bg-transparent px-5 text-white hover:bg-white/10 hover:text-white"
+            className="rounded-full border border-black/15 bg-transparent px-5 text-black hover:bg-black/5 hover:text-black"
           >
             Log in
           </Button>
-          <Button className="rounded-full border border-white/15 bg-white/10 px-5 text-white backdrop-blur hover:bg-white/20">
+          <Button className="rounded-full border border-black/15 bg-black/5 px-5 text-black backdrop-blur hover:bg-black/10">
             Try now
           </Button>
         </div>

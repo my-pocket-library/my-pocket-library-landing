@@ -13,6 +13,8 @@ import {
 import Core from "smooothy";
 import * as THREE from "three";
 import { Book, type BookCover } from "./book";
+import { CosmicCompass } from "./cosmic-compass";
+import { SparkleEmitter } from "./sparkle-emitter";
 import { PARAMS } from "@/lib/scene-params";
 
 const COVERS: BookCover[] = [
@@ -124,11 +126,6 @@ const COVERS: BookCover[] = [
 
 const SLIDE_PX = 220;
 
-function wrapToRange(value: number, half: number): number {
-  const total = half * 2;
-  return ((((value + half) % total) + total) % total) - half;
-}
-
 type BooksProps = {
   sliderRef: RefObject<Core | null>;
   onMeshesReady?: (objects: THREE.Object3D[]) => void;
@@ -158,36 +155,41 @@ function Books({ sliderRef, onMeshesReady }: BooksProps) {
       slider.update();
     }
 
+    // Distribute books evenly around a horizontal circle (xz-plane).
+    // slider.current is in slide-index units (one unit = one book slot),
+    // so multiplying by the angular step gives a continuous offset angle.
     const count = COVERS.length;
-    const spacing = PARAMS.spacing;
-    const totalWidth = count * spacing;
-    const halfWidth = totalWidth / 2;
-    const offset = slider ? slider.current * spacing : 0;
+    const angleStep = (Math.PI * 2) / count;
+    const R = PARAMS.circleRadius;
+    const offsetAngle = slider ? slider.current * angleStep : 0;
     const t = state.clock.elapsedTime;
 
     for (let i = 0; i < count; i++) {
       const node = refs.current[i];
       if (!node) continue;
 
-      const ti = i / (count - 1);
-      const baseX = (i - (count - 1) / 2) * spacing;
-      const baseZ =
-        Math.sin(ti * Math.PI) * PARAMS.arcDepth + (i % 2 === 0 ? 0.04 : -0.04);
-      const bob = Math.sin(t * PARAMS.bobSpeed + i * 0.6) * PARAMS.bobAmount;
-      const baseY = -0.4 + Math.sin(i * 0.9) * 0.03 + bob;
+      // Negate the offset so dragging left brings the next book in from the
+      // right, matching the original linear-scroll feel.
+      const angle = i * angleStep - offsetAngle;
+      const x = Math.sin(angle) * R;
+      const z = Math.cos(angle) * R;
 
+      // Optional subtle y-axis modulation around the loop + per-book bob.
+      const bob = Math.sin(t * PARAMS.bobSpeed + i * 0.6) * PARAMS.bobAmount;
+      const arcY = Math.sin(angle * 2) * PARAMS.arcDepth * 0.15;
+      const y = -0.4 + bob + arcY;
+
+      // Each book faces outward from the circle's center; rotationY adds an
+      // extra global tilt, rotationVariance adds per-book noise.
       const ry =
+        angle +
         PARAMS.rotationY +
-        Math.sin(ti * Math.PI * 1.2) * PARAMS.rotationVariance;
+        Math.sin(i * 1.31 + t * 0.1) * PARAMS.rotationVariance;
       const rz =
         (Math.sin(i * 1.7) * Math.PI) / 200 +
         Math.sin(t * 0.5 + i * 0.4) * 0.01;
 
-      node.position.set(
-        wrapToRange(baseX + offset, halfWidth),
-        baseY,
-        baseZ,
-      );
+      node.position.set(x, y, z);
       node.rotation.set(0, ry, rz);
     }
   });
@@ -273,11 +275,12 @@ function LiveFog() {
     fogRef.current.near = PARAMS.fogNear;
     fogRef.current.far = PARAMS.fogFar;
   });
+  // Match the page bg (--ana-1 ≈ #f4eee2) so distant books fade into the section.
   return (
     <fog
       ref={fogRef}
       attach="fog"
-      args={["#000000", PARAMS.fogNear, PARAMS.fogFar]}
+      args={["#f4eee2", PARAMS.fogNear, PARAMS.fogFar]}
     />
   );
 }
@@ -339,13 +342,15 @@ export function BookScene({ postVersion = 0 }: BookSceneProps) {
         gl={{ antialias: true, alpha: true }}
         className="!absolute inset-0"
       >
-        <color attach="background" args={["#000000"]} />
+        <color attach="background" args={["#f4eee2"]} />
         <LiveFog />
         <CameraRig />
         <LiveLights />
 
         <Suspense fallback={null}>
           <Books sliderRef={sliderRef} onMeshesReady={setBookObjects} />
+          <CosmicCompass />
+          <SparkleEmitter />
           {outlineOn && bookObjects.length > 0 ? (
             <EffectComposer>
               <Outline
