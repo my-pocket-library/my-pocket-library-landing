@@ -191,6 +191,15 @@ function Books({ sliderRef, onMeshesReady }: BooksProps) {
 
       node.position.set(x, y, z);
       node.rotation.set(0, ry, rz);
+
+      // Per-book aspect-ratio variance — each axis scaled independently from
+      // deterministic sine sums of i, so the row reads as a real shelf
+      // (paperbacks, mass-markets, oversize). Stronger than the previous pass
+      // so the silhouettes are visibly different, not just slightly nudged.
+      const sx = 1 + Math.sin(i * 1.93) * 0.1 + Math.cos(i * 0.71) * 0.06;
+      const sy = 1 + Math.cos(i * 1.41) * 0.14 + Math.sin(i * 0.83) * 0.06;
+      const sz = 1 + Math.sin(i * 2.71) * 0.22 + Math.cos(i * 0.31) * 0.1;
+      node.scale.set(sx, sy, sz);
     }
   });
 
@@ -203,7 +212,7 @@ function Books({ sliderRef, onMeshesReady }: BooksProps) {
             refs.current[i] = el;
           }}
         >
-          <Book cover={cover} />
+          <Book cover={cover} index={i} />
         </group>
       ))}
     </group>
