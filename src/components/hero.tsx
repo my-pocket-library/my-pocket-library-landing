@@ -1,23 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BookScene } from "@/components/book-scene";
 import { Tweakpane } from "@/components/tweakpane";
 
 export function Hero() {
-  const [postVersion, setPostVersion] = useState(0);
-  const handlePostToggle = useCallback(
-    () => setPostVersion((v) => v + 1),
-    [],
-  );
-
   return (
     <section className="relative isolate min-h-screen overflow-hidden bg-ana-1">
       <RadialPattern />
 
       <div className="pointer-events-none absolute left-1/2 top-[36%] bottom-0 w-screen -translate-x-1/2">
-        <BookScene postVersion={postVersion} />
+        <BookScene />
         <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-ana-1 via-ana-1/60 to-transparent" />
       </div>
 
@@ -49,7 +42,7 @@ export function Hero() {
         </div>
       </div>
 
-      <Tweakpane onPostToggle={handlePostToggle} />
+      <Tweakpane />
     </section>
   );
 }

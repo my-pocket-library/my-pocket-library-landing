@@ -19,12 +19,13 @@ type PaneLike = Folder & {
   dispose: () => void;
 };
 
-type Props = {
-  /** Fired when toggles that need a React re-render change (e.g. celOutline). */
-  onPostToggle?: () => void;
-};
-
-export function Tweakpane({ onPostToggle }: Props = {}) {
+/**
+ * Floating dev-only controls for live-tuning PARAMS at runtime. Only fields
+ * the active scene actually reads are bound — bloom/compass/sparkle/outline
+ * etc. were stripped along with their consumers, so they don't appear here
+ * either.
+ */
+export function Tweakpane() {
   const hostRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<PaneLike | null>(null);
   // Only render the portal after mount so document.body is available (SSR safe).
@@ -43,7 +44,7 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
     }) as unknown as PaneLike;
     paneRef.current = pane;
 
-    const carousel = pane.addFolder({ title: "Carousel", expanded: true });
+    const carousel = pane.addFolder({ title: "Carousel", expanded: false });
     carousel.addBinding(PARAMS, "lerpFactor", { min: 0.02, max: 1, step: 0.01 });
     carousel.addBinding(PARAMS, "dragSensitivity", {
       min: 0.0005,
@@ -62,8 +63,54 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
     });
     carousel.addBinding(PARAMS, "snap");
     carousel.addBinding(PARAMS, "scrollInput");
+    carousel.addBinding(PARAMS, "autoCarousel");
+    carousel.addBinding(PARAMS, "autoCarouselSpeed", {
+      min: -2,
+      max: 2,
+      step: 0.02,
+    });
 
-    const books = pane.addFolder({ title: "Books", expanded: true });
+    const carouselTransform = pane.addFolder({
+      title: "Carousel Transform",
+      expanded: true,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselX", {
+      min: -6,
+      max: 6,
+      step: 0.05,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselY", {
+      min: -6,
+      max: 6,
+      step: 0.05,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselZ", {
+      min: -6,
+      max: 6,
+      step: 0.05,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselRotX", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselRotY", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselRotZ", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    carouselTransform.addBinding(PARAMS, "carouselScale", {
+      min: 0.1,
+      max: 4,
+      step: 0.01,
+    });
+
+    const books = pane.addFolder({ title: "Books", expanded: false });
     const sizeKeys: (keyof SceneParams)[] = [
       "bookWidth",
       "bookHeight",
@@ -83,9 +130,10 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
       max: 0.6,
       step: 0.01,
     });
-    books.addBinding(PARAMS, "arcDepth", { min: 0, max: 2, step: 0.01 });
     books.addBinding(PARAMS, "bobAmount", { min: 0, max: 0.4, step: 0.005 });
     books.addBinding(PARAMS, "bobSpeed", { min: 0, max: 4, step: 0.05 });
+    books.addBinding(PARAMS, "toonShading");
+    books.addBinding(PARAMS, "toonBands", { min: 2, max: 8, step: 1 });
 
     const camera = pane.addFolder({ title: "Camera", expanded: false });
     camera.addBinding(PARAMS, "camX", { min: -6, max: 6, step: 0.05 });
@@ -105,74 +153,38 @@ export function Tweakpane({ onPostToggle }: Props = {}) {
     lights.addBinding(PARAMS, "keyZ", { min: -10, max: 10, step: 0.1 });
     lights.addBinding(PARAMS, "fillIntensity", { min: 0, max: 3, step: 0.05 });
     lights.addBinding(PARAMS, "rimIntensity", { min: 0, max: 3, step: 0.05 });
-    lights.addBinding(PARAMS, "envIntensity", { min: 0, max: 3, step: 0.05 });
 
-    const compass = pane.addFolder({ title: "Compass", expanded: false });
-    compass.addBinding(PARAMS, "compassEnabled");
-    compass.addBinding(PARAMS, "compassScale", {
+    const phone = pane.addFolder({ title: "Phone", expanded: true });
+    phone.addBinding(PARAMS, "phoneEnabled");
+    phone.addBinding(PARAMS, "phoneX", { min: -6, max: 6, step: 0.05 });
+    phone.addBinding(PARAMS, "phoneY", { min: -6, max: 6, step: 0.05 });
+    phone.addBinding(PARAMS, "phoneZ", { min: -2, max: 10, step: 0.05 });
+    phone.addBinding(PARAMS, "phoneRotX", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    phone.addBinding(PARAMS, "phoneRotY", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    phone.addBinding(PARAMS, "phoneRotZ", {
+      min: -Math.PI,
+      max: Math.PI,
+      step: 0.01,
+    });
+    phone.addBinding(PARAMS, "phoneScale", {
       min: 0.1,
       max: 3,
-      step: 0.05,
-    });
-    compass.addBinding(PARAMS, "compassY", { min: -3, max: 3, step: 0.05 });
-    compass.addBinding(PARAMS, "compassTilt", {
-      min: -1.5,
-      max: 1.5,
       step: 0.01,
     });
-    compass.addBinding(PARAMS, "compassWobble", {
-      min: 0,
-      max: 0.6,
-      step: 0.01,
-    });
-    compass.addBinding(PARAMS, "compassRingsSpeed", {
-      min: -2,
-      max: 2,
-      step: 0.05,
-    });
-    compass.addBinding(PARAMS, "compassSpokesSpeed", {
-      min: -2,
-      max: 2,
-      step: 0.05,
-    });
-    compass.addBinding(PARAMS, "compassPlanetSpeed", {
-      min: -3,
-      max: 3,
-      step: 0.05,
-    });
-
-    const sparkle = pane.addFolder({ title: "Sparkles", expanded: false });
-    sparkle.addBinding(PARAMS, "sparkleEnabled");
-    sparkle.addBinding(PARAMS, "sparkleSpeed", {
-      min: 0,
-      max: 4,
-      step: 0.05,
-    });
-    sparkle.addBinding(PARAMS, "sparkleLifetime", {
-      min: 0.3,
-      max: 5,
-      step: 0.05,
-    });
-    sparkle.addBinding(PARAMS, "sparkleSize", {
-      min: 0.005,
-      max: 0.15,
-      step: 0.005,
-    });
-
-    const post = pane.addFolder({ title: "Post", expanded: true });
-    post.addBinding(PARAMS, "toonShading");
-    post.addBinding(PARAMS, "toonBands", { min: 2, max: 8, step: 1 });
-    post
-      .addBinding(PARAMS, "celOutline")
-      .on("change", () => onPostToggle?.());
-    post.addBinding(PARAMS, "outlineStrength", { min: 0.5, max: 10, step: 0.1 });
-    post.addBinding(PARAMS, "outlineThickness", { min: 1, max: 8, step: 0.5 });
 
     return () => {
       pane.dispose();
       paneRef.current = null;
     };
-  }, [onPostToggle, mounted]);
+  }, [mounted]);
 
   if (!mounted) return null;
 
