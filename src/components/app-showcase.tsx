@@ -7,16 +7,16 @@ import { cn } from "@/lib/utils";
 
 const SCREENS = [
   {
-    src: "/showcase/screen-1.png",
-    alt: "Pocket Library home — browse your collection by status, location, and reading state.",
+    src: "/images/pckt1.png",
+    alt: "Pocket Library — your shelf, scanned and organised at a glance.",
   },
   {
-    src: "/showcase/screen-2.png",
-    alt: "Book details — track status, total pages, reading log, and favorites.",
+    src: "/images/pkt2.png",
+    alt: "Book details — status, reading progress, and notes for every title.",
   },
   {
-    src: "/showcase/screen-3.png",
-    alt: "Welcome screen — your library, in your pocket.",
+    src: "/images/pkt3.png",
+    alt: "Library overview — search and sort across your entire collection.",
   },
 ];
 
@@ -95,7 +95,18 @@ export function AppShowcase() {
       <div
         ref={hostRef}
         aria-label="App screenshots"
-        className="relative mt-12 flex cursor-grab select-none touch-pan-y overflow-hidden px-6 active:cursor-grabbing md:mt-16 md:px-12"
+        className="relative mt-12 flex cursor-grab select-none touch-pan-y overflow-hidden active:cursor-grabbing md:mt-16"
+        // Centre-align: pad each side by half the (viewport − item-width)
+        // so item 0 starts in the middle of the viewport. Smooothy snaps
+        // by translating all items by `current × itemWidth`, so the same
+        // padding keeps every snapped slide centred — at slide 1 the
+        // second item lands at the centre, at slide 2 the third, etc.
+        // 130px = half the desktop item width (260), 36vw = half the
+        // mobile item width (72vw).
+        style={{
+          paddingLeft: "calc(50% - min(130px, 36vw))",
+          paddingRight: "calc(50% - min(130px, 36vw))",
+        }}
       >
         {SCREENS.map((screen, i) => (
           <div
