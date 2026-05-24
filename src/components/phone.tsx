@@ -510,6 +510,22 @@ function AppShell() {
   );
 }
 
+// Slide amplitude in inner-ortho X for the active book plane. The widest
+// content drawn by paintBookContent is the title/author card (78% of plane
+// width → half-width ≈ 0.78 × ORTHO_HALF_W). At `frac = ±0.5` the plane sits
+// at ∓INNER_SLIDE_AMPLITUDE, which puts the card edge past the screen edge
+// — so the texture swap that fires at the boundary happens with nothing of
+// the active book visible, making the swap invisible.
+//
+// The slide is intentionally NOT tied to the outer carousel arc anymore:
+// matching that arc made the plane only reach ±0.535 at the boundary,
+// which left the card half-visible at the swap moment (the original
+// "disappear mid-screen" glitch). Decoupling lets us pick an amplitude
+// large enough to actually clear the frustum.
+const CARD_PLANE_FRACTION = 0.78;
+const CARD_HALF_W = ORTHO_HALF_W * CARD_PLANE_FRACTION;
+const INNER_SLIDE_AMPLITUDE = ORTHO_HALF_W + CARD_HALF_W + 0.04;
+
 function BookContent({
   covers,
   centeredIndexRef,
@@ -551,7 +567,9 @@ function BookContent({
     if (!g || !mat) return;
 
     // Swap the active book's content texture if the carousel's centered
-    // index changed since the last frame.
+    // index changed since the last frame. Because the slide formula below
+    // puts the plane fully off-screen at `frac = ±0.5`, this swap fires
+    // when no content is visible — invisible to the user.
     const idx = centeredIndexRef.current ?? 0;
     if (idx !== currentIdxRef.current) {
       currentIdxRef.current = idx;
@@ -559,15 +577,16 @@ function BookContent({
       mat.needsUpdate = true;
     }
 
-    // Slide using the SAME world-x formula the outer carousel uses for its
-    // centered book, just rescaled into inner-ortho space — so the inner
-    // content reaches the screen edge at the same `frac` value the outer
-    // book does, in the same sinusoidal curve.
+    // Sine-eased slide along x. sin(frac × π) maps frac ∈ [-0.5, +0.5] to
+    // [-1, +1]; multiplied by INNER_SLIDE_AMPLITUDE gives the plane center.
+    // Negated so the active book slides in the same direction as the outer
+    // carousel does (the outer auto-rotation decrements slider, so the
+    // active book exits to the right and the next one enters from the
+    // left). Sine easing decelerates near the boundary, which is exactly
+    // where we want the slide to be unhurried — the texture swap there
+    // benefits from the plane being mostly still.
     const frac = transitionRef.current ?? 0;
-    const count = covers.length;
-    const angleStep = (Math.PI * 2) / count;
-    const outerWorldX = -Math.sin(frac * angleStep) * PARAMS.circleRadius;
-    g.position.x = outerWorldX * WORLD_TO_INNER;
+    g.position.x = -Math.sin(frac * Math.PI) * INNER_SLIDE_AMPLITUDE;
     g.rotation.z = frac * 0.12;
   });
 
