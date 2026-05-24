@@ -21,9 +21,9 @@ type PaneLike = Folder & {
 
 /**
  * Floating dev-only controls for live-tuning PARAMS at runtime. Only fields
- * the active scene actually reads are bound — bloom/compass/sparkle/outline
- * etc. were stripped along with their consumers, so they don't appear here
- * either.
+ * the active scene actually reads are bound — bloom, toon shading, compass,
+ * sparkle and outline have all been removed along with their consumers, so
+ * they don't appear here either.
  */
 export function Tweakpane() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -150,10 +150,6 @@ export function Tweakpane() {
       max: 0.6,
       step: 0.01,
     });
-    books.addBinding(PARAMS, "bobAmount", { min: 0, max: 0.4, step: 0.005 });
-    books.addBinding(PARAMS, "bobSpeed", { min: 0, max: 4, step: 0.05 });
-    books.addBinding(PARAMS, "toonShading");
-    books.addBinding(PARAMS, "toonBands", { min: 2, max: 8, step: 1 });
 
     const camera = pane.addFolder({ title: "Camera", expanded: false });
     camera.addBinding(PARAMS, "camX", { min: -6, max: 6, step: 0.05 });

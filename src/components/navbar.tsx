@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useLenis } from "lenis/react";
 import { cn } from "@/lib/utils";
 
@@ -28,8 +29,13 @@ export function Navbar() {
   // here keeps the slide animation in lockstep with the page's smooth-
   // scroll motion rather than fighting raw `window.scroll` events.
   const [hidden, setHidden] = useState(false);
+  const pathname = usePathname();
 
-  useLenis(({ scroll, direction }) => {
+  // useLenis returns the Lenis instance even when called with a callback,
+  // so this single call gives us BOTH the per-frame scroll subscription
+  // (for the hide/show animation below) AND a handle to call scrollTo()
+  // from the home-link click handler further down.
+  const lenis = useLenis(({ scroll, direction }) => {
     // The hero is `min-h-screen`, so its bottom edge is at ≈ 100vh. Use
     // a small early-trigger margin so the header starts hiding just
     // before the hero is fully off-screen, instead of waiting for the
@@ -49,6 +55,19 @@ export function Navbar() {
     // direction === 0 (idle) leaves the current state alone.
   });
 
+  const handleHomeClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    // On the home page, clicking the logo would otherwise be a no-op (we
+    // already are at `/`). Hijack the click and smooth-scroll to the top
+    // through Lenis so the same gesture works for "go home" from any
+    // depth in the page. On other routes (`/privacy`, `/terms`) let
+    // next/link navigate normally — Next.js scrolls the new page to top
+    // on its own, which Lenis then smooths.
+    if (pathname === "/") {
+      e.preventDefault();
+      lenis?.scrollTo(0);
+    }
+  };
+
   return (
     <header
       className={cn(
@@ -60,6 +79,7 @@ export function Navbar() {
         <div className="flex items-center gap-10">
           <Link
             href="/"
+            onClick={handleHomeClick}
             className="font-serif text-xl tracking-tight text-black"
           >
             <span className="italic">My</span>{" "}

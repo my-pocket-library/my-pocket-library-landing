@@ -886,32 +886,8 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       };
     }, [cover, wear]);
 
-  const gradientMapRef = useRef<THREE.DataTexture | null>(null);
-  const bandsRef = useRef<number>(0);
-
-  // Build a gradient ramp texture used by MeshToonMaterial for the banded look.
-  // Lazily (re)built when the desired band count changes.
-  const ensureGradient = (bands: number) => {
-    if (bandsRef.current === bands && gradientMapRef.current) {
-      return gradientMapRef.current;
-    }
-    gradientMapRef.current?.dispose();
-    const data = new Uint8Array(bands);
-    for (let i = 0; i < bands; i++) {
-      data[i] = Math.floor(((i + 1) / bands) * 255);
-    }
-    const tex = new THREE.DataTexture(data, bands, 1, THREE.RedFormat);
-    tex.minFilter = THREE.NearestFilter;
-    tex.magFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-    gradientMapRef.current = tex;
-    bandsRef.current = bands;
-    return tex;
-  };
-
   // Shared paper-fiber normal map for the matte page faces, inner edges,
-  // and (in toon mode) anywhere we want surface relief without artwork emboss.
+  // and anywhere we want surface relief without artwork emboss.
   const paperNormal = useMemo(() => getPaperNormalTexture(), []);
 
   // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
@@ -1009,68 +985,9 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
     cover.baseColor,
   ]);
 
-  const toonMaterials = useMemo(() => {
-    const gradientMap = ensureGradient(PARAMS.toonBands);
-    const pages = new THREE.MeshToonMaterial({
-      map: pagesTex,
-      gradientMap,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.2, 0.2),
-    });
-    const pagesEdge = new THREE.MeshToonMaterial({
-      map: pagesEdgeTex,
-      gradientMap,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.2, 0.2),
-    });
-    const spineMat = new THREE.MeshToonMaterial({
-      map: spineTex,
-      gradientMap,
-      normalMap: spineNormalTex,
-      normalScale: new THREE.Vector2(0.4, 0.4),
-    });
-    const front = new THREE.MeshToonMaterial({
-      map: coverTex,
-      gradientMap,
-      normalMap: coverNormalTex,
-      normalScale: new THREE.Vector2(0.5, 0.5),
-    });
-    const back = new THREE.MeshToonMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.55),
-      gradientMap,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.2, 0.2),
-    });
-    const coverEdge = new THREE.MeshToonMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.78),
-      gradientMap,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.2, 0.2),
-    });
-    const innerEdge = new THREE.MeshToonMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.40),
-      gradientMap,
-    });
-    return {
-      frontBoard: [coverEdge, coverEdge, coverEdge, coverEdge, front, innerEdge],
-      backBoard:  [coverEdge, coverEdge, coverEdge, coverEdge, innerEdge, back],
-      spine:      [innerEdge, spineMat, coverEdge, coverEdge, innerEdge, innerEdge],
-      paper: [pagesEdge, pagesEdge, pages, pages, pages, pages],
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    coverTex,
-    spineTex,
-    pagesTex,
-    pagesEdgeTex,
-    coverNormalTex,
-    spineNormalTex,
-    paperNormal,
-    cover.baseColor,
-  ]);
-
-  // Imperatively swap geometry size + active material set each frame so
-  // tweakpane edits don't require React re-renders (which caused flickering).
+  // Imperatively swap geometry size each frame so tweakpane edits to
+  // bookWidth/Height/Depth don't require React re-renders (which caused
+  // flickering on the carousel).
   useFrame(() => {
     const frontBoard = frontBoardRef.current;
     const backBoard = backBoardRef.current;
@@ -1182,34 +1099,9 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       sizeRef.current = [w, h, d];
     }
 
-    // Refresh the toon gradient ramp if band count was tweaked.
-    if (PARAMS.toonShading && bandsRef.current !== PARAMS.toonBands) {
-      const ramp = ensureGradient(PARAMS.toonBands);
-      const allToon: THREE.Material[] = [
-        ...toonMaterials.frontBoard,
-        ...toonMaterials.backBoard,
-        ...toonMaterials.spine,
-        ...toonMaterials.paper,
-      ];
-      for (const mat of allToon) {
-        (mat as THREE.MeshToonMaterial).gradientMap = ramp;
-        (mat as THREE.MeshToonMaterial).needsUpdate = true;
-      }
-    }
-
-    const desired = PARAMS.toonShading ? toonMaterials : standardMaterials;
-    if (frontBoard.material !== desired.frontBoard) {
-      frontBoard.material = desired.frontBoard;
-    }
-    if (backBoard.material !== desired.backBoard) {
-      backBoard.material = desired.backBoard;
-    }
-    if (spineMesh.material !== desired.spine) {
-      spineMesh.material = desired.spine;
-    }
-    if (paperMesh.material !== desired.paper) {
-      paperMesh.material = desired.paper;
-    }
+    // Materials are now always the PBR (MeshStandardMaterial) set — toon
+    // shading was removed. The mesh `material` prop in the JSX below
+    // already points at standardMaterials.*, so nothing to swap per frame.
 
     // Visibility toggle for the inner paper block. Skipping the mesh
     // entirely (instead of just hiding via opacity) means zero draw calls
@@ -1236,10 +1128,10 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       }
       m.opacity = op;
     };
-    for (const mat of desired.frontBoard) applyOpacity(mat);
-    for (const mat of desired.backBoard) applyOpacity(mat);
-    for (const mat of desired.spine) applyOpacity(mat);
-    for (const mat of desired.paper) applyOpacity(mat);
+    for (const mat of standardMaterials.frontBoard) applyOpacity(mat);
+    for (const mat of standardMaterials.backBoard) applyOpacity(mat);
+    for (const mat of standardMaterials.spine) applyOpacity(mat);
+    for (const mat of standardMaterials.paper) applyOpacity(mat);
     const ribbon = ribbonRef.current;
     if (ribbon) applyOpacity(ribbon.material as THREE.Material);
   });
@@ -1250,7 +1142,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       backBoardRef.current?.geometry.dispose();
       spineRef.current?.geometry.dispose();
       paperMeshRef.current?.geometry.dispose();
-      gradientMapRef.current?.dispose();
     };
   }, []);
 

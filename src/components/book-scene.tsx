@@ -266,12 +266,10 @@ function Books({
       const sz = 1 + Math.sin(i * 2.71) * 0.22 + Math.cos(i * 0.31) * 0.1;
 
       // Ground-align: each book's bottom edge sits on GROUND_Y (flex-end on
-      // the y axis). Bob adds a tiny upward hop only — never dips below
-      // ground so books can't penetrate the floor.
+      // the y axis). No idle-bob animation — books stand still on the
+      // floor.
       const halfH = (PARAMS.bookHeight * sy) / 2;
-      const bob =
-        Math.sin(t * PARAMS.bobSpeed + i * 0.6) * PARAMS.bobAmount;
-      const y = GROUND_Y + halfH + Math.max(0, bob);
+      const y = GROUND_Y + halfH;
       // Negate the angle component so each book's spine (its "tail" — the
       // -X local face) rotates to face the OUTER side of the fan and the
       // open edge swings toward the carousel center. Cover faces stay

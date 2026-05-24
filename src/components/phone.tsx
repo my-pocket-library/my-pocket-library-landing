@@ -110,9 +110,14 @@ function roundedRectPath(
 }
 
 /**
- * App shell — painted once. Status bar (9:41 + signal/wifi/battery icons) and
- * the "My Library" header with chevron. Sits behind the per-book content so
- * the chrome stays put while the book slides through.
+ * App shell — painted once. Status bar (11:49 + cellular/wifi/battery icons)
+ * and the "My Library" header with chevron. Sits behind the per-book
+ * content so the chrome stays put while the book slides through.
+ *
+ * Glyph styles match the reference iPhone Dynamic Island status bar:
+ *   • Cellular: 4 same-size filled dots
+ *   • WiFi:     3 stacked filled arcs + base dot
+ *   • Battery:  rounded outline + inner fill + cap nub
  */
 function paintAppShell(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext("2d");
@@ -127,53 +132,85 @@ function paintAppShell(canvas: HTMLCanvasElement) {
 
   // ---- Status bar ------------------------------------------------------
   const sbY = H * 0.045;
-  ctx.fillStyle = "#0c0c0c";
+  const ink = "#0c0c0c";
+
+  // Time on the left
+  ctx.fillStyle = ink;
   ctx.font = `700 ${H * 0.022}px -apple-system, system-ui, sans-serif`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText("9:41", W * 0.10, sbY);
+  ctx.fillText("11:49", W * 0.10, sbY);
 
-  // Right-side cluster: signal bars, wifi arc, battery
+  // Right-side cluster, anchored from W * 0.90 and laid out right-to-left:
+  //   …  cellular dots  ·  wifi  ·  battery  →
   const rightX = W * 0.90;
+  let x = rightX;
 
-  // Battery (outline + fill + cap)
+  // ── Battery — rounded rectangle + inner fill (≈85% charge) + cap nub
   const battW = W * 0.085;
-  const battH = H * 0.013;
-  ctx.strokeStyle = "#0c0c0c";
+  const battH = H * 0.014;
+  const battR = 2.5;
+  const inset = 2;
+  ctx.save();
+  ctx.strokeStyle = ink;
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(rightX - battW, sbY - battH / 2, battW, battH);
-  ctx.fillStyle = "#0c0c0c";
-  ctx.fillRect(
-    rightX - battW + 1.5,
-    sbY - battH / 2 + 1.5,
-    battW * 0.7 - 1.5,
-    battH - 3,
+  roundedRectPath(ctx, x - battW, sbY - battH / 2, battW, battH, battR);
+  ctx.stroke();
+  ctx.fillStyle = ink;
+  // Inner fill — leaves a small gap to the outline so it reads as a
+  // separate "charge" indicator, not a solid black box.
+  roundedRectPath(
+    ctx,
+    x - battW + inset,
+    sbY - battH / 2 + inset,
+    (battW - inset * 2) * 0.85,
+    battH - inset * 2,
+    Math.max(0, battR - 1.5),
   );
-  ctx.fillRect(rightX, sbY - battH / 4, 2, battH / 2);
+  ctx.fill();
+  // Cap nub on the right
+  ctx.fillRect(x, sbY - (battH * 0.5) / 2, 2, battH * 0.5);
+  ctx.restore();
 
-  // Wifi (3 stacked arcs)
-  const wifiX = rightX - battW - W * 0.045;
+  x -= battW + W * 0.018; // gap before WiFi
+
+  // ── WiFi — 3 stacked filled arcs + a base dot at the bottom.
+  // Arcs are thick rounded strokes so they read as solid wedges (matches
+  // the reference style, not the thin-outline look).
+  const wifiH = H * 0.022;
+  const wifiCx = x - wifiH * 0.55;
+  const wifiCy = sbY + wifiH * 0.20;
+
+  ctx.save();
+  ctx.fillStyle = ink;
+  ctx.strokeStyle = ink;
+  ctx.lineCap = "round";
+
+  // Base dot
+  ctx.beginPath();
+  ctx.arc(wifiCx, wifiCy, wifiH * 0.13, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Three concentric arcs above the dot
+  ctx.lineWidth = wifiH * 0.16;
   for (let i = 0; i < 3; i++) {
+    const r = wifiH * (0.42 + i * 0.28);
     ctx.beginPath();
-    ctx.arc(
-      wifiX,
-      sbY + battH / 2,
-      (i + 1) * W * 0.011,
-      Math.PI * 1.18,
-      Math.PI * 1.82,
-    );
-    ctx.strokeStyle = "#0c0c0c";
-    ctx.lineWidth = 2;
+    ctx.arc(wifiCx, wifiCy, r, Math.PI * 1.22, Math.PI * 1.78);
     ctx.stroke();
   }
+  ctx.restore();
 
-  // Signal bars (4 increasing bars)
-  const sigBaseX = wifiX - W * 0.065;
-  for (let i = 0; i < 4; i++) {
-    const bw = W * 0.008;
-    const bh = 4 + i * 4;
-    ctx.fillStyle = "#0c0c0c";
-    ctx.fillRect(sigBaseX + i * (bw + 2), sbY + battH / 2 - bh, bw, bh);
+  x = wifiCx - wifiH * 0.5 - W * 0.016; // gap before cellular dots
+
+  // ── Cellular — 4 same-size filled dots, evenly spaced
+  const dotR = H * 0.0055;
+  const dotGap = dotR * 3.4;
+  ctx.fillStyle = ink;
+  for (let i = 3; i >= 0; i--) {
+    ctx.beginPath();
+    ctx.arc(x - i * dotGap, sbY, dotR, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // ---- Header: "My Library" with chevron-down -------------------------
