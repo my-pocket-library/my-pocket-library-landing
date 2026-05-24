@@ -118,7 +118,6 @@ export function AppShowcase() {
             <div
               className={cn(
                 "relative aspect-[1242/2688] overflow-hidden rounded-[34px] border border-black/10 bg-white",
-                "shadow-[0_30px_80px_-30px_rgba(0,0,0,0.4)]",
                 "will-change-[transform,opacity,filter]",
                 "transition-[opacity,filter,transform] duration-[1100ms] ease-out",
                 revealed
