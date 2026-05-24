@@ -259,16 +259,12 @@ function Books({
       const x = Math.sin(angle) * R;
       const z = Math.cos(angle) * R;
 
-      // Per-book aspect-ratio variance (stable per index). Computed first so
-      // we can use sy to ground-align each book by its actual scaled height.
-      const sx = 1 + Math.sin(i * 1.93) * 0.1 + Math.cos(i * 0.71) * 0.06;
-      const sy = 1 + Math.cos(i * 1.41) * 0.14 + Math.sin(i * 0.83) * 0.06;
-      const sz = 1 + Math.sin(i * 2.71) * 0.22 + Math.cos(i * 0.31) * 0.1;
-
-      // Ground-align: each book's bottom edge sits on GROUND_Y (flex-end on
-      // the y axis). No idle-bob animation — books stand still on the
-      // floor.
-      const halfH = (PARAMS.bookHeight * sy) / 2;
+      // All books render at the same bookWidth × bookHeight × bookDepth
+      // — per-book aspect-ratio variance is intentionally disabled so the
+      // row reads uniform.
+      // Ground-align: each book's bottom edge sits on GROUND_Y (flex-end
+      // on the y axis). No idle-bob animation — books stand still.
+      const halfH = PARAMS.bookHeight / 2;
       const y = GROUND_Y + halfH;
       // Negate the angle component so each book's spine (its "tail" — the
       // -X local face) rotates to face the OUTER side of the fan and the
@@ -284,7 +280,9 @@ function Books({
 
       node.position.set(x, y, z);
       node.rotation.set(0, ry, rz);
-      node.scale.set(sx, sy, sz);
+      // Reset to uniform scale so books that had per-frame scale on the
+      // previous tick get normalised back to identity.
+      node.scale.set(1, 1, 1);
 
       // Opacity: 1 while inside ±fullHalf, linearly down to 0 over
       // fadeWidth, then 0 beyond. fadeWidth = 0 collapses to a hard
