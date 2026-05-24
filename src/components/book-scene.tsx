@@ -5,7 +5,6 @@ import {
   type RefObject,
   Suspense,
   useEffect,
-  useMemo,
   useRef,
 } from "react";
 import Core from "smooothy";
@@ -400,60 +399,6 @@ function LiveFog() {
   );
 }
 
-// Floor disc — large horizontal plane that catches shadows from the books
-// and phone, plus a baked radial-gradient texture that adds a soft AO
-// vignette under the carousel. Together they give the scene a grounded
-// surface to stand on (matches the cream floor + soft ellipse shadow in
-// the target hero composition).
-function Ground() {
-  const shadowTex = useMemo(() => {
-    if (typeof document === "undefined") return null;
-    const SIZE = 512;
-    const c = document.createElement("canvas");
-    c.width = SIZE;
-    c.height = SIZE;
-    const ctx = c.getContext("2d");
-    if (!ctx) return null;
-    // Cream base.
-    ctx.fillStyle = "#f4eee2";
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    // Soft radial darken — vignettes the center so books read as standing
-    // on a slightly lit-from-above surface.
-    const grad = ctx.createRadialGradient(
-      SIZE / 2,
-      SIZE / 2,
-      SIZE * 0.10,
-      SIZE / 2,
-      SIZE / 2,
-      SIZE * 0.55,
-    );
-    grad.addColorStop(0, "rgba(60, 42, 22, 0.22)");
-    grad.addColorStop(0.6, "rgba(60, 42, 22, 0.06)");
-    grad.addColorStop(1, "rgba(60, 42, 22, 0)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
-    return tex;
-  }, []);
-
-  return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, GROUND_Y, 0]}
-    >
-      <planeGeometry args={[28, 28]} />
-      <meshStandardMaterial
-        map={shadowTex ?? undefined}
-        color="#f4eee2"
-        roughness={0.95}
-        metalness={0}
-      />
-    </mesh>
-  );
-}
-
 export function BookScene() {
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<Core | null>(null);
@@ -524,7 +469,6 @@ export function BookScene() {
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}
           />
-          <Ground />
         </Suspense>
       </Canvas>
     </div>

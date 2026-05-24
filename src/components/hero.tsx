@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { AppStoreBadge } from "@/components/app-store-badge";
 import { BookScene } from "@/components/book-scene";
 import { Tweakpane } from "@/components/tweakpane";
 
@@ -11,7 +12,6 @@ export function Hero() {
 
       <div className="pointer-events-none absolute left-1/2 top-[36%] bottom-0 w-screen -translate-x-1/2">
         <BookScene />
-        <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-ana-1 via-ana-1/60 to-transparent" />
       </div>
 
       <div className="pointer-events-none relative z-10 mx-auto flex max-w-[1100px] flex-col items-center px-6 pt-44 text-center md:pt-52">
@@ -25,13 +25,7 @@ export function Hero() {
         </p>
 
         <div className="pointer-events-auto mt-8 flex items-center gap-3">
-          <Button
-            size="lg"
-            className="group h-12 rounded-full bg-black px-6 text-[15px] font-medium text-ana-1 shadow-[0_2px_30px_-2px_rgba(0,0,0,0.25)] hover:bg-black/90"
-          >
-            <span className="mr-2 inline-block size-1.5 rounded-full bg-ana-1" />
-            Get the app
-          </Button>
+          <AppStoreBadge />
           <Button
             size="lg"
             variant="ghost"

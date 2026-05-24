@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLenis } from "lenis/react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // Same-page anchor links — Lenis (configured with `anchors: true` in
@@ -77,17 +76,6 @@ export function Navbar() {
               </a>
             ))}
           </nav>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            className="rounded-full border border-black/15 bg-transparent px-5 text-black hover:bg-black/5 hover:text-black"
-          >
-            Log in
-          </Button>
-          <Button className="rounded-full border border-black/15 bg-black/5 px-5 text-black backdrop-blur hover:bg-black/10">
-            Try now
-          </Button>
         </div>
       </div>
     </header>
