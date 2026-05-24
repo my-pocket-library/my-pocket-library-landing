@@ -1,6 +1,8 @@
 import { Navbar } from "@/components/navbar";
 import { Hero } from "@/components/hero";
 import { AppShowcase } from "@/components/app-showcase";
+import { FaqSection } from "@/components/faq-section";
+import { SupportSection } from "@/components/support-section";
 import { Footer } from "@/components/footer";
 
 export default function Home() {
@@ -9,6 +11,8 @@ export default function Home() {
       <Navbar />
       <Hero />
       <AppShowcase />
+      <FaqSection />
+      <SupportSection />
       <Footer />
     </main>
   );
