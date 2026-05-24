@@ -623,32 +623,144 @@ function paintPages(canvas: HTMLCanvasElement) {
   );
 }
 
-// Paper-block geometry constants — fractions of the book's outer dimensions.
-const OPEN_PROTRUDE_FRAC = 0.018; // paper sticks out past cover at open edge
-const TB_PROTRUDE_FRAC = 0.012; // …and at top + bottom
-const SPINE_RECESS_FRAC = 0.005; // paper sits slightly inside the spine
-const PAPER_DEPTH_FRAC = 0.84; // paper is thinner than the total book depth
-const COVER_BOW_FRAC = 0.06; // front/back cover swells outward in the center
+// ---------------------------------------------------------------------------
+// Book geometry — hardcover model.
+//
+// Real bound books aren't solid bricks: the front cover, back cover, and spine
+// are three separate boards that together *overhang* a smaller page block
+// recessed inside them. To model that, we don't use a single closed box for
+// the cover — we use three separate pieces (front, back, spine) whose top,
+// bottom, and open-edge faces are AIR, not cover material. That's what lets
+// the recessed page block be visible from those angles.
+//
+//   Top-down cross-section (cover closed, looking from +Y):
+//
+//        spine ↓        ← open edge (+X) →
+//      ┌──┬─────────────────────┐  ← front board (+Z face = cover art)
+//      │  │                     │
+//      │  │   ┌───────────────┐ │
+//      │  │   │  page block   │ │  ← pages are smaller on every axis
+//      │  │   └───────────────┘ │     so the boards overhang them
+//      │  │                     │
+//      └──┴─────────────────────┘  ← back board (-Z face = back cover)
+//        ↑
+//      spine (-X, occupies the binding edge, height = full H,
+//             depth = the gap between the two boards)
+//
+// The page block is offset toward +X (away from the spine) just enough that
+// its -X edge sits flush against the spine's +X face — no gap there. On +X,
+// ±Y, and ±Z the cover boards extend past the page block by an "overhang"
+// fraction, giving the recessed look.
+// ---------------------------------------------------------------------------
 
-// Compute the inner paper block's dimensions and centered position relative
-// to the outer cover, given the outer (w, h, d).
-function paperLayout(w: number, h: number, d: number) {
-  const openProtrude = w * OPEN_PROTRUDE_FRAC;
-  const spineRecess = w * SPINE_RECESS_FRAC;
-  const tbProtrude = h * TB_PROTRUDE_FRAC;
-  const paperW = w - spineRecess + openProtrude;
-  const paperH = h + 2 * tbProtrude;
-  const paperD = d * PAPER_DEPTH_FRAC;
-  // Shift the paper toward +X so its spine-side edge is at -w/2 + spineRecess.
-  const offsetX = (openProtrude + spineRecess) / 2;
-  return { paperW, paperH, paperD, offsetX };
+// Fractions of the book's outer dimensions.
+const COVER_BOARD_T_FRAC = 0.08;        // front/back board thickness (of D)
+const SPINE_T_FRAC = 0.05;              // spine board thickness (of W)
+const PAPER_TB_OVERHANG_FRAC = 0.025;   // cover overhang at top + bottom (of H)
+const PAPER_OPEN_OVERHANG_FRAC = 0.025; // cover overhang at open edge   (of W)
+const PAPER_Z_GAP_FRAC = 0.02;          // tiny gap between paper and boards (of D)
+const COVER_BOW_FRAC = 0.04;            // outer face of front/back board swells outward
+
+type BookPiece = {
+  w: number;
+  h: number;
+  d: number;
+  x: number;
+  y: number;
+  z: number;
+};
+
+type BookLayout = {
+  frontBoard: BookPiece;
+  backBoard: BookPiece;
+  spine: BookPiece;
+  paper: BookPiece;
+  boardT: number;
+  spineT: number;
+};
+
+/**
+ * Given the outer book dimensions, compute size + center position for each
+ * of the four meshes (front board, back board, spine, paper block). The page
+ * block ends up smaller than the cover on every axis with the boards
+ * overhanging it on +X / ±Y / ±Z.
+ */
+function bookLayout(w: number, h: number, d: number): BookLayout {
+  const boardT = d * COVER_BOARD_T_FRAC;
+  const spineT = w * SPINE_T_FRAC;
+  const tbOverhang = h * PAPER_TB_OVERHANG_FRAC;
+  const openOverhang = w * PAPER_OPEN_OVERHANG_FRAC;
+  const zGap = d * PAPER_Z_GAP_FRAC;
+
+  // Front + back boards: full outer (w × h), with the spine sitting alongside
+  // them on -X and *between* their inner faces on Z. Boards therefore span
+  // the entire front/back face of the book at thin depth boardT each.
+  const frontBoard: BookPiece = {
+    w,
+    h,
+    d: boardT,
+    x: 0,
+    y: 0,
+    z: d / 2 - boardT / 2,
+  };
+  const backBoard: BookPiece = {
+    w,
+    h,
+    d: boardT,
+    x: 0,
+    y: 0,
+    z: -(d / 2 - boardT / 2),
+  };
+
+  // Spine: occupies the -X edge between the two boards' inner faces. Height
+  // is the full book height; depth = the gap between front and back boards.
+  const spine: BookPiece = {
+    w: spineT,
+    h,
+    d: d - 2 * boardT,
+    x: -w / 2 + spineT / 2,
+    y: 0,
+    z: 0,
+  };
+
+  // Paper block: recessed from every cover surface.
+  //   -X edge: flush against spine's +X face   → x = -w/2 + spineT
+  //   +X edge: cover overhang of openOverhang  → x =  w/2 - openOverhang
+  //   ±Y edges: cover overhang of tbOverhang
+  //   ±Z edges: pages sit between boards, with a tiny zGap on each side
+  const paperW = w - spineT - openOverhang;
+  const paperH = h - 2 * tbOverhang;
+  const paperD = d - 2 * boardT - 2 * zGap;
+  const paperCenterX = (spineT - openOverhang) / 2;
+  const paper: BookPiece = {
+    w: paperW,
+    h: paperH,
+    d: paperD,
+    x: paperCenterX,
+    y: 0,
+    z: 0,
+  };
+
+  return { frontBoard, backBoard, spine, paper, boardT, spineT };
 }
 
-// Push +Z and -Z face vertices outward in the +Z / -Z direction so each cover
-// reads as a soft pillow. Falloff is (1-u²)(1-v²) so the bow vanishes at the
-// edges. Identification is via the original face normals on the rounded box,
-// which is robust regardless of dimensions.
-function bowCoverGeometry(geom: THREE.BufferGeometry, bowAmount: number) {
+/**
+ * Push the outer Z face vertices outward so the cover reads as a soft pillow.
+ * Falloff is (1-u²)(1-v²) so the bow vanishes at the edges.
+ *
+ * `side`:
+ *   "front" → only bow the +Z face (use on the front cover board)
+ *   "back"  → only bow the -Z face (use on the back cover board)
+ *   "both"  → bow both ±Z faces (legacy behaviour, for a single closed cover)
+ *
+ * Bowing only the outer face matters because the boards are thin: bowing
+ * BOTH faces would push the inner face deeper into the recessed page block.
+ */
+function bowCoverGeometry(
+  geom: THREE.BufferGeometry,
+  bowAmount: number,
+  side: "front" | "back" | "both" = "both",
+) {
   const positions = geom.attributes.position as THREE.BufferAttribute;
   const normals = geom.attributes.normal as THREE.BufferAttribute;
   const box = new THREE.Box3().setFromBufferAttribute(positions);
@@ -658,6 +770,8 @@ function bowCoverGeometry(geom: THREE.BufferGeometry, bowAmount: number) {
   for (let i = 0; i < positions.count; i++) {
     const nz = normals.getZ(i);
     if (Math.abs(nz) > 0.85) {
+      if (side === "front" && nz < 0) continue;
+      if (side === "back" && nz > 0) continue;
       const x = positions.getX(i);
       const y = positions.getY(i);
       const u = Math.min(1, Math.abs(x) / halfW);
@@ -672,7 +786,14 @@ function bowCoverGeometry(geom: THREE.BufferGeometry, bowAmount: number) {
 }
 
 export function Book({ cover, index = 0, opacityRef }: BookProps) {
-  const coverMeshRef = useRef<THREE.Mesh>(null);
+  // The hardcover model uses four separate meshes — front board, back board,
+  // spine, and paper block — instead of the old single-cover + single-paper
+  // setup. This is what lets the page block sit visibly recessed inside the
+  // cover (the boards' top/bottom/open-edge faces don't exist as cover panels,
+  // so the air around the smaller paper block is genuinely visible).
+  const frontBoardRef = useRef<THREE.Mesh>(null);
+  const backBoardRef = useRef<THREE.Mesh>(null);
+  const spineRef = useRef<THREE.Mesh>(null);
   const paperMeshRef = useRef<THREE.Mesh>(null);
   const ribbonRef = useRef<THREE.Mesh>(null);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
@@ -681,8 +802,14 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   const showRibbon = useMemo(() => hasBookmarkRibbon(index), [index]);
   const ribbonColor = useMemo(() => getRibbonColor(index), [index]);
 
-  const { coverTex, spineTex, pagesTex, coverNormalTex, spineNormalTex } =
-    useMemo(() => {
+  const {
+    coverTex,
+    spineTex,
+    pagesTex,
+    pagesEdgeTex,
+    coverNormalTex,
+    spineNormalTex,
+  } = useMemo(() => {
       const make = (
         width: number,
         height: number,
@@ -707,7 +834,26 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       const spineTex = make(128, 768, (c) => paintSpine(c, cover, wear), {
         srgb: true,
       });
-      const pagesTex = make(512, 512, paintPages, { srgb: true });
+      // Pages texture — horizontal stripes representing dense page edges.
+      // We paint ONCE and create TWO textures over the same canvas: the
+      // upright one for the top/bottom faces (where horizontal stripes read
+      // as page edges running spine→open-edge), and a rotated copy for the
+      // open-edge face (where stripes need to appear VERTICAL because each
+      // page is a vertical sheet, so its visible edge is vertical too).
+      const pagesCanvas = document.createElement("canvas");
+      pagesCanvas.width = 512;
+      pagesCanvas.height = 512;
+      paintPages(pagesCanvas);
+
+      const pagesTex = new THREE.CanvasTexture(pagesCanvas);
+      pagesTex.colorSpace = THREE.SRGBColorSpace;
+      pagesTex.anisotropy = 8;
+
+      const pagesEdgeTex = new THREE.CanvasTexture(pagesCanvas);
+      pagesEdgeTex.colorSpace = THREE.SRGBColorSpace;
+      pagesEdgeTex.anisotropy = 8;
+      pagesEdgeTex.center.set(0.5, 0.5);
+      pagesEdgeTex.rotation = Math.PI / 2;
 
       // Build per-book normal maps from a transient grayscale heightmap of
       // just the embossable artwork (pattern + title). Then convert via
@@ -734,6 +880,7 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
         coverTex,
         spineTex,
         pagesTex,
+        pagesEdgeTex,
         coverNormalTex,
         spineNormalTex,
       };
@@ -767,13 +914,21 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   // and (in toon mode) anywhere we want surface relief without artwork emboss.
   const paperNormal = useMemo(() => getPaperNormalTexture(), []);
 
-  // Materials per face order: +X, -X, +Y, -Y, +Z, -Z
-  // +X right (open edge — hidden behind paper), -X left (spine),
-  // +Y top (hidden behind paper), -Y bottom (hidden behind paper),
-  // +Z front (cover art), -Z back (cover dark)
+  // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
   //
-  // All cover faces are now MeshStandardMaterial (no clearcoat) — matches
-  // the matte ink-paper look and saves shader work on mobile.
+  // The cover is now THREE separate pieces (front board, back board, spine),
+  // each with its own material array. Each piece's *outer* face carries the
+  // cover artwork; everything else is either coverEdge (the visible thin
+  // strips along the board's edges where the binding cloth wraps around)
+  // or innerEdge (interior faces that face the page block and are mostly
+  // occluded — kept dark so any peek-through reads as binding lining).
+  //
+  //   frontBoard at +Z:  +Z = cover art,        -Z = innerEdge (faces paper)
+  //   backBoard  at -Z:  -Z = back cover,       +Z = innerEdge (faces paper)
+  //   spine      at -X:  -X = spine artwork,    +X = innerEdge (faces paper)
+  //                      ±Z = innerEdge (seam where spine meets boards)
+  //
+  // All board side-strips (+X / ±Y) and the spine's ±Y use coverEdge.
   const standardMaterials = useMemo(() => {
     // Paper — high roughness, light fiber normal relief.
     const pages = new THREE.MeshStandardMaterial({
@@ -782,41 +937,72 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       normalMap: paperNormal,
       normalScale: new THREE.Vector2(0.15, 0.15),
     });
-    // Spine — uses the per-book spine normal map (vertical title emboss +
-    // hinge creases bake in via the heightfield + fiber noise).
-    const spine = new THREE.MeshStandardMaterial({
+    // Same paper material but using the rotated texture, for the open-edge
+    // face where page lines need to run vertically.
+    const pagesEdge = new THREE.MeshStandardMaterial({
+      map: pagesEdgeTex,
+      roughness: 0.95,
+      normalMap: paperNormal,
+      normalScale: new THREE.Vector2(0.15, 0.15),
+    });
+    // Spine artwork — vertical title emboss + hinge creases via spine normal.
+    const spineMat = new THREE.MeshStandardMaterial({
       map: spineTex,
       roughness: 0.75,
       normalMap: spineNormalTex,
       normalScale: new THREE.Vector2(0.4, 0.4),
     });
-    // Front cover — emboss normal makes the title and pattern read as raised.
+    // Front cover artwork — emboss normal raises title + pattern.
     const front = new THREE.MeshStandardMaterial({
       map: coverTex,
       roughness: 0.78,
       normalMap: coverNormalTex,
       normalScale: new THREE.Vector2(0.55, 0.55),
     });
+    // Back cover — darker than the cover, slight paper-fiber relief.
     const back = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cover.baseColor).multiplyScalar(0.42),
       roughness: 0.85,
       normalMap: paperNormal,
       normalScale: new THREE.Vector2(0.22, 0.22),
     });
-    // Inside lip of the cover where the paper meets — mostly occluded; we
-    // keep it neutral so any peek-through reads as binding lining.
-    const innerEdge = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.38),
-      roughness: 0.9,
+    // Cover edge — the binding cloth/paper wrapping around the thin sides of
+    // the boards. Slightly darker than the cover face so it reads as a fold.
+    const coverEdge = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.75),
+      roughness: 0.85,
+      normalMap: paperNormal,
+      normalScale: new THREE.Vector2(0.25, 0.25),
     });
+    // Inner faces — heavily darkened so the recess between cover and pages
+    // reads as ambient-occluded shadow even without runtime shadow rendering.
+    const innerEdge = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.30),
+      roughness: 0.95,
+    });
+
+    // Face order: +X, -X, +Y, -Y, +Z, -Z
     return {
-      cover: [innerEdge, spine, innerEdge, innerEdge, front, back],
-      paper: pages,
+      // Front board: +Z is the cover. -Z faces the paper block (innerEdge).
+      // Sides are all visible thin strips of binding (coverEdge).
+      frontBoard: [coverEdge, coverEdge, coverEdge, coverEdge, front, innerEdge],
+      // Back board: -Z is the back cover, +Z faces the paper block.
+      backBoard:  [coverEdge, coverEdge, coverEdge, coverEdge, innerEdge, back],
+      // Spine: -X is the spine artwork, +X faces the paper block. ±Z meet
+      // the boards' inner faces in a seam (innerEdge — same colour, no
+      // visible z-fighting). ±Y are the visible top/bottom of the spine.
+      spine:      [innerEdge, spineMat, coverEdge, coverEdge, innerEdge, innerEdge],
+      // Paper — multi-material so the open-edge face gets the rotated
+      // texture (vertical page lines), while top/bottom faces use the
+      // upright texture (horizontal page lines parallel to the spine).
+      // Face order: +X, -X, +Y, -Y, +Z, -Z.
+      paper: [pagesEdge, pagesEdge, pages, pages, pages, pages],
     };
   }, [
     coverTex,
     spineTex,
     pagesTex,
+    pagesEdgeTex,
     coverNormalTex,
     spineNormalTex,
     paperNormal,
@@ -831,7 +1017,13 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       normalMap: paperNormal,
       normalScale: new THREE.Vector2(0.2, 0.2),
     });
-    const spine = new THREE.MeshToonMaterial({
+    const pagesEdge = new THREE.MeshToonMaterial({
+      map: pagesEdgeTex,
+      gradientMap,
+      normalMap: paperNormal,
+      normalScale: new THREE.Vector2(0.2, 0.2),
+    });
+    const spineMat = new THREE.MeshToonMaterial({
       map: spineTex,
       gradientMap,
       normalMap: spineNormalTex,
@@ -849,19 +1041,28 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       normalMap: paperNormal,
       normalScale: new THREE.Vector2(0.2, 0.2),
     });
+    const coverEdge = new THREE.MeshToonMaterial({
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.78),
+      gradientMap,
+      normalMap: paperNormal,
+      normalScale: new THREE.Vector2(0.2, 0.2),
+    });
     const innerEdge = new THREE.MeshToonMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.5),
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.40),
       gradientMap,
     });
     return {
-      cover: [innerEdge, spine, innerEdge, innerEdge, front, back],
-      paper: pages,
+      frontBoard: [coverEdge, coverEdge, coverEdge, coverEdge, front, innerEdge],
+      backBoard:  [coverEdge, coverEdge, coverEdge, coverEdge, innerEdge, back],
+      spine:      [innerEdge, spineMat, coverEdge, coverEdge, innerEdge, innerEdge],
+      paper: [pagesEdge, pagesEdge, pages, pages, pages, pages],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     coverTex,
     spineTex,
     pagesTex,
+    pagesEdgeTex,
     coverNormalTex,
     spineNormalTex,
     paperNormal,
@@ -871,9 +1072,11 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   // Imperatively swap geometry size + active material set each frame so
   // tweakpane edits don't require React re-renders (which caused flickering).
   useFrame(() => {
-    const coverMesh = coverMeshRef.current;
+    const frontBoard = frontBoardRef.current;
+    const backBoard = backBoardRef.current;
+    const spineMesh = spineRef.current;
     const paperMesh = paperMeshRef.current;
-    if (!coverMesh || !paperMesh) return;
+    if (!frontBoard || !backBoard || !spineMesh || !paperMesh) return;
 
     const [lw, lh, ld] = sizeRef.current;
     if (
@@ -884,45 +1087,94 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       const w = PARAMS.bookWidth;
       const h = PARAMS.bookHeight;
       const d = PARAMS.bookDepth;
-      const minDim = Math.min(w, h, d);
-      const radius = minDim * 0.08;
+      const layout = bookLayout(w, h, d);
 
-      // Outer cover — RoundedBox + a soft pillow-bow on the front and back faces.
-      coverMesh.geometry.dispose();
-      const coverGeom = new RoundedBoxGeometry(w, h, d, 4, radius);
-      bowCoverGeometry(coverGeom, d * COVER_BOW_FRAC);
-      coverMesh.geometry = coverGeom;
+      // Corner radii: the cover boards get a small chamfer matching the old
+      // cover's rounding; the paper block gets a *smaller* radius so its
+      // corners read as crisp paper edges rather than soft cover-board curves
+      // (one of the user-requested differences from cover geometry).
+      const coverRadius = Math.min(w, h, d) * 0.06;
+      const paperRadius =
+        Math.min(layout.paper.w, layout.paper.h, layout.paper.d) * 0.025;
+      const spineRadius = Math.min(layout.spine.d, layout.spine.w) * 0.20;
 
-      // Inner paper block — sticks out past the cover at top/bottom/open edge,
-      // hidden inside the cover on the spine and depth axes.
+      // Front board: thin rounded slab on +Z. Bow only its outer (+Z) face
+      // so the front cover swells outward without punching the inner face
+      // back into the recessed page block.
+      frontBoard.geometry.dispose();
+      const frontGeom = new RoundedBoxGeometry(
+        layout.frontBoard.w,
+        layout.frontBoard.h,
+        layout.frontBoard.d,
+        3,
+        coverRadius,
+      );
+      bowCoverGeometry(frontGeom, d * COVER_BOW_FRAC, "front");
+      frontBoard.geometry = frontGeom;
+      frontBoard.position.set(
+        layout.frontBoard.x,
+        layout.frontBoard.y,
+        layout.frontBoard.z,
+      );
+
+      // Back board: mirror of the front. Bow its outer (-Z) face only.
+      backBoard.geometry.dispose();
+      const backGeom = new RoundedBoxGeometry(
+        layout.backBoard.w,
+        layout.backBoard.h,
+        layout.backBoard.d,
+        3,
+        coverRadius,
+      );
+      bowCoverGeometry(backGeom, d * COVER_BOW_FRAC, "back");
+      backBoard.geometry = backGeom;
+      backBoard.position.set(
+        layout.backBoard.x,
+        layout.backBoard.y,
+        layout.backBoard.z,
+      );
+
+      // Spine: thin slab on -X, occupying the binding edge between the two
+      // boards' inner faces. No bow — real spines are flat or sewn-flat.
+      spineMesh.geometry.dispose();
+      spineMesh.geometry = new RoundedBoxGeometry(
+        layout.spine.w,
+        layout.spine.h,
+        layout.spine.d,
+        3,
+        spineRadius,
+      );
+      spineMesh.position.set(layout.spine.x, layout.spine.y, layout.spine.z);
+
+      // Paper block: smaller than the cover on every axis, recessed inside
+      // the assembly. Tighter corner radius so it reads as a stack of paper
+      // sheets, not a cover board.
       paperMesh.geometry.dispose();
-      const layout = paperLayout(w, h, d);
-      const paperRadius = Math.min(layout.paperD, layout.paperH) * 0.04;
       paperMesh.geometry = new RoundedBoxGeometry(
-        layout.paperW,
-        layout.paperH,
-        layout.paperD,
+        layout.paper.w,
+        layout.paper.h,
+        layout.paper.d,
         2,
         paperRadius,
       );
-      paperMesh.position.set(layout.offsetX, 0, 0);
+      paperMesh.position.set(layout.paper.x, layout.paper.y, layout.paper.z);
 
       // Reposition the ribbon (if this book has one) to hang from inside the
-      // paper block and stick out a small overhang below the bottom edge.
+      // paper block and stick out below the bottom edge.
       const ribbon = ribbonRef.current;
       if (ribbon) {
-        const ribbonW = layout.paperW * 0.07;
-        const overhang = layout.paperH * 0.07;
+        const ribbonW = layout.paper.w * 0.07;
+        const overhang = layout.paper.h * 0.07;
         // Half hidden inside the paper, half hanging below.
-        const insideLen = layout.paperH * 0.4;
+        const insideLen = layout.paper.h * 0.4;
         const totalLen = insideLen + overhang;
         ribbon.scale.set(ribbonW, totalLen, 1);
         // Center y: half of (insideLen − overhang) below the paper bottom edge.
-        const centerY = -layout.paperH / 2 + (insideLen - overhang) / 2;
-        // Offset toward the spine + sit slightly forward of the back cover so
-        // the ribbon "tucks into" the binding.
-        const ribbonX = layout.offsetX - layout.paperW * 0.32;
-        const ribbonZ = layout.paperD * 0.18;
+        const centerY = -layout.paper.h / 2 + (insideLen - overhang) / 2;
+        // Tuck toward the spine + sit slightly forward of the back cover so
+        // the ribbon visibly emerges from the binding.
+        const ribbonX = layout.paper.x - layout.paper.w * 0.32;
+        const ribbonZ = layout.paper.d * 0.18;
         ribbon.position.set(ribbonX, centerY, ribbonZ);
         ribbon.rotation.z = Math.sin(index * 1.7) * 0.05; // tiny natural tilt
       }
@@ -933,28 +1185,47 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
     // Refresh the toon gradient ramp if band count was tweaked.
     if (PARAMS.toonShading && bandsRef.current !== PARAMS.toonBands) {
       const ramp = ensureGradient(PARAMS.toonBands);
-      for (const mat of toonMaterials.cover) {
+      const allToon: THREE.Material[] = [
+        ...toonMaterials.frontBoard,
+        ...toonMaterials.backBoard,
+        ...toonMaterials.spine,
+        ...toonMaterials.paper,
+      ];
+      for (const mat of allToon) {
         (mat as THREE.MeshToonMaterial).gradientMap = ramp;
         (mat as THREE.MeshToonMaterial).needsUpdate = true;
       }
-      (toonMaterials.paper as THREE.MeshToonMaterial).gradientMap = ramp;
-      (toonMaterials.paper as THREE.MeshToonMaterial).needsUpdate = true;
     }
 
     const desired = PARAMS.toonShading ? toonMaterials : standardMaterials;
-    if (coverMesh.material !== desired.cover) {
-      coverMesh.material = desired.cover;
+    if (frontBoard.material !== desired.frontBoard) {
+      frontBoard.material = desired.frontBoard;
+    }
+    if (backBoard.material !== desired.backBoard) {
+      backBoard.material = desired.backBoard;
+    }
+    if (spineMesh.material !== desired.spine) {
+      spineMesh.material = desired.spine;
     }
     if (paperMesh.material !== desired.paper) {
       paperMesh.material = desired.paper;
     }
 
-    // Apply per-book fade opacity. The parent scene writes opacityRef every
-    // frame based on the book's angular distance from the camera — books
-    // behind the front 5 are written as 0, books inside the fade band as
-    // [0..1], and the front 5 as 1. We then set `transparent` only when
-    // strictly necessary (opacity < 1) so fully-visible books don't pay
-    // the transparent-render cost.
+    // Visibility toggle for the inner paper block. Skipping the mesh
+    // entirely (instead of just hiding via opacity) means zero draw calls
+    // when the user wants books to read as hollow shells.
+    paperMesh.visible = PARAMS.bookPagesEnabled;
+
+    // Per-axis scale multipliers on top of the layout-derived paper size,
+    // applied via mesh.scale so we don't have to rebuild the geometry
+    // whenever the user drags the knob.
+    paperMesh.scale.set(
+      PARAMS.bookPagesScaleX,
+      PARAMS.bookPagesScaleY,
+      PARAMS.bookPagesScaleZ,
+    );
+
+    // Apply per-book fade opacity to every material across all four meshes.
     const op = opacityRef?.current ?? 1;
     const wantTransparent = op < 0.999;
     const applyOpacity = (mat: THREE.Material) => {
@@ -965,34 +1236,38 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       }
       m.opacity = op;
     };
-    for (const mat of desired.cover) applyOpacity(mat);
-    applyOpacity(desired.paper);
+    for (const mat of desired.frontBoard) applyOpacity(mat);
+    for (const mat of desired.backBoard) applyOpacity(mat);
+    for (const mat of desired.spine) applyOpacity(mat);
+    for (const mat of desired.paper) applyOpacity(mat);
     const ribbon = ribbonRef.current;
     if (ribbon) applyOpacity(ribbon.material as THREE.Material);
   });
 
   useEffect(() => {
     return () => {
-      coverMeshRef.current?.geometry.dispose();
+      frontBoardRef.current?.geometry.dispose();
+      backBoardRef.current?.geometry.dispose();
+      spineRef.current?.geometry.dispose();
       paperMeshRef.current?.geometry.dispose();
       gradientMapRef.current?.dispose();
     };
   }, []);
 
+  // Initial placeholder geometries — useFrame replaces them with the proper
+  // bookLayout()-sized RoundedBoxGeometries on first tick.
   return (
     <group>
-      <mesh
-        ref={coverMeshRef}
-        material={standardMaterials.cover}
-      >
-        <boxGeometry
-          args={[PARAMS.bookWidth, PARAMS.bookHeight, PARAMS.bookDepth]}
-        />
+      <mesh ref={frontBoardRef} material={standardMaterials.frontBoard}>
+        <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh
-        ref={paperMeshRef}
-        material={standardMaterials.paper}
-      >
+      <mesh ref={backBoardRef} material={standardMaterials.backBoard}>
+        <boxGeometry args={[1, 1, 1]} />
+      </mesh>
+      <mesh ref={spineRef} material={standardMaterials.spine}>
+        <boxGeometry args={[1, 1, 1]} />
+      </mesh>
+      <mesh ref={paperMeshRef} material={standardMaterials.paper}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
       {showRibbon ? (

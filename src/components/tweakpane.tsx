@@ -119,6 +119,22 @@ export function Tweakpane() {
     sizeKeys.forEach((k) => {
       books.addBinding(PARAMS, k, { min: 0.1, max: 4, step: 0.01 });
     });
+    books.addBinding(PARAMS, "bookPagesEnabled");
+    books.addBinding(PARAMS, "bookPagesScaleX", {
+      min: 0.1,
+      max: 3,
+      step: 0.01,
+    });
+    books.addBinding(PARAMS, "bookPagesScaleY", {
+      min: 0.1,
+      max: 3,
+      step: 0.01,
+    });
+    books.addBinding(PARAMS, "bookPagesScaleZ", {
+      min: 0.1,
+      max: 3,
+      step: 0.01,
+    });
     books.addBinding(PARAMS, "circleRadius", {
       min: 0.5,
       max: 14,
@@ -177,6 +193,23 @@ export function Tweakpane() {
     phone.addBinding(PARAMS, "phoneScale", {
       min: 0.1,
       max: 3,
+      step: 0.01,
+    });
+
+    phone.addBinding(PARAMS, "phoneMouseRotation");
+    phone.addBinding(PARAMS, "phoneMouseStrengthX", {
+      min: -1,
+      max: 1,
+      step: 0.01,
+    });
+    phone.addBinding(PARAMS, "phoneMouseStrengthY", {
+      min: -1,
+      max: 1,
+      step: 0.01,
+    });
+    phone.addBinding(PARAMS, "phoneMouseLerp", {
+      min: 0.01,
+      max: 1,
       step: 0.01,
     });
 

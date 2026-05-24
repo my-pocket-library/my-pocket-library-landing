@@ -334,6 +334,28 @@ export function Phone({
     };
   }, [phoneGeom, screenGeom, islandGeom]);
 
+  // ---- Mouse parallax -------------------------------------------------
+  // Latest normalized cursor coords in [-1, +1] from viewport centre.
+  // Written from a window-level mousemove listener (the Canvas wrapper is
+  // pointer-events-none, so R3F's built-in pointer state wouldn't update).
+  const mouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Current lerped rotation contribution from the mouse — added on top of
+  // PARAMS.phoneRot* each frame.
+  const mouseRotRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (e: MouseEvent) => {
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+      if (halfW <= 0 || halfH <= 0) return;
+      mouseRef.current.x = (e.clientX - halfW) / halfW;
+      mouseRef.current.y = (e.clientY - halfH) / halfH;
+    };
+    window.addEventListener("mousemove", handler, { passive: true });
+    return () => window.removeEventListener("mousemove", handler);
+  }, []);
+
   // Live transform driven by PARAMS so the tweakpane can move/scale the
   // phone without re-renders.
   useFrame(() => {
@@ -342,7 +364,28 @@ export function Phone({
     g.visible = PARAMS.phoneEnabled;
     if (!g.visible) return;
     g.position.set(PARAMS.phoneX, PARAMS.phoneY, PARAMS.phoneZ);
-    g.rotation.set(PARAMS.phoneRotX, PARAMS.phoneRotY, PARAMS.phoneRotZ);
+
+    // Mouse parallax: target rotation = normalized cursor × strength;
+    // when disabled, target is 0 so the phone eases back to its base
+    // rotation instead of snapping. Y-axis yaw follows mouse-x and
+    // X-axis pitch follows mouse-y (negate mouseY because browser y
+    // grows DOWN — so "cursor below centre" should pitch the phone-top
+    // toward the viewer, not away).
+    const targetPitch = PARAMS.phoneMouseRotation
+      ? -mouseRef.current.y * PARAMS.phoneMouseStrengthX
+      : 0;
+    const targetYaw = PARAMS.phoneMouseRotation
+      ? mouseRef.current.x * PARAMS.phoneMouseStrengthY
+      : 0;
+    const lerp = Math.max(0, Math.min(1, PARAMS.phoneMouseLerp));
+    mouseRotRef.current.x += (targetPitch - mouseRotRef.current.x) * lerp;
+    mouseRotRef.current.y += (targetYaw - mouseRotRef.current.y) * lerp;
+
+    g.rotation.set(
+      PARAMS.phoneRotX + mouseRotRef.current.x,
+      PARAMS.phoneRotY + mouseRotRef.current.y,
+      PARAMS.phoneRotZ,
+    );
     g.scale.setScalar(PARAMS.phoneScale);
   });
 

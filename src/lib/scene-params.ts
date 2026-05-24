@@ -18,6 +18,15 @@ export type SceneParams = {
   bookWidth: number;
   bookHeight: number;
   bookDepth: number;
+  /** Toggle the inner paper mesh (the page block visible at top/bottom/open
+   *  edge of each book). Off makes books read as solid boxes. */
+  bookPagesEnabled: boolean;
+  /** Per-axis scale multipliers on the paper block, applied via mesh.scale
+   *  on top of the cover-derived paperLayout dimensions. 1 = natural size,
+   *  >1 makes the pages stick out further, <1 hides them inside the cover. */
+  bookPagesScaleX: number;
+  bookPagesScaleY: number;
+  bookPagesScaleZ: number;
   circleRadius: number; // radius of the horizontal carousel circle
   rotationY: number; // rotation offset added to each book's natural angle (rad)
   rotationVariance: number; // sin variance amplitude (rad)
@@ -93,6 +102,15 @@ export type SceneParams = {
   phoneRotZ: number; // rad
   phoneScale: number; // uniform scale multiplier on the phone group
 
+  // Mouse-driven parallax rotation on the phone. Normalized mouse coords
+  // (in [-1, +1] from viewport centre) are multiplied by Strength to produce
+  // a target rotation offset, then lerped each frame toward it. Added on
+  // top of the base phoneRot* values, not overriding them.
+  phoneMouseRotation: boolean;
+  phoneMouseStrengthX: number; // rad, max pitch offset at max |mouseY|
+  phoneMouseStrengthY: number; // rad, max yaw   offset at max |mouseX|
+  phoneMouseLerp: number;      // 0..1, smoothing per frame (higher = snappier)
+
   // Carousel transform — translate / rotate / scale the entire ring of
   // books as a rigid body. Applied on the outer <group> wrapping all 14
   // book nodes (so per-book layout still happens in carousel-local space).
@@ -115,15 +133,19 @@ export const PARAMS: SceneParams = {
   autoCarousel: true,
   autoCarouselSpeed: 0.3,
 
-  bookWidth: 0.99,
-  bookHeight: 1.54,
-  bookDepth: 0.23,
-  circleRadius: 3.45,
+  bookWidth: 1.20,
+  bookHeight: 1.75,
+  bookDepth: 0.31,
+  bookPagesEnabled: true,
+  bookPagesScaleX: 1,
+  bookPagesScaleY: 1,
+  bookPagesScaleZ: 1,
+  circleRadius: 2.70,
   rotationY: 0,
-  rotationVariance: 0.06,
+  rotationVariance: 0,
   arcDepth: 0.3,
-  bobAmount: 0.025,
-  bobSpeed: 0.6,
+  bobAmount: 0,
+  bobSpeed: 0,
 
   camX: 0,
   camY: 0.5,
@@ -142,7 +164,7 @@ export const PARAMS: SceneParams = {
   rimIntensity: 0,
   envIntensity: 3.0,
 
-  toonShading: true,
+  toonShading: false,
   toonBands: 8,
   celOutline: false,
   outlineStrength: 3.6,
@@ -185,12 +207,17 @@ export const PARAMS: SceneParams = {
   phoneRotZ: 0,
   phoneScale: 0.83,
 
+  phoneMouseRotation: true,
+  phoneMouseStrengthX: 0.15,
+  phoneMouseStrengthY: 0.20,
+  phoneMouseLerp: 0.08,
+
   carouselX: 0,
-  carouselY: 0.90,
-  carouselZ: 0.15,
+  carouselY: 1.00,
+  carouselZ: -1.30,
   carouselRotX: 0,
   carouselRotY: 0,
   carouselRotZ: 0,
-  carouselScale: 0.99,
+  carouselScale: 1.07,
 };
 
