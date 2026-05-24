@@ -13,5 +13,9 @@ import { ReactLenis } from "lenis/react";
  * if a section ever needs faster snap.
  */
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
-  return <ReactLenis root>{children}</ReactLenis>;
+  // `anchors: true` makes Lenis intercept clicks on <a href="#id"> and
+  // smoothly scroll to the target instead of letting the browser instant-
+  // jump. Required for the navbar's "App / FAQ / Support" anchor links to
+  // feel consistent with the rest of the page's smoothed scrolling.
+  return <ReactLenis root options={{ anchors: true }}>{children}</ReactLenis>;
 }
