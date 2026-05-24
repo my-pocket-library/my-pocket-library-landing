@@ -41,6 +41,10 @@ export function Tweakpane() {
     const pane = new Pane({
       container: hostRef.current,
       title: "Controls",
+      // Boot collapsed — keeps the dev panel out of the way until the
+      // user actually wants to tweak something. Click the title bar to
+      // expand. Every sub-folder is collapsed too (`expanded: false`).
+      expanded: false,
     }) as unknown as PaneLike;
     paneRef.current = pane;
 
@@ -72,7 +76,7 @@ export function Tweakpane() {
 
     const carouselTransform = pane.addFolder({
       title: "Carousel Transform",
-      expanded: true,
+      expanded: false,
     });
     carouselTransform.addBinding(PARAMS, "carouselX", {
       min: -6,
@@ -170,7 +174,7 @@ export function Tweakpane() {
     lights.addBinding(PARAMS, "fillIntensity", { min: 0, max: 3, step: 0.05 });
     lights.addBinding(PARAMS, "rimIntensity", { min: 0, max: 3, step: 0.05 });
 
-    const phone = pane.addFolder({ title: "Phone", expanded: true });
+    const phone = pane.addFolder({ title: "Phone", expanded: false });
     phone.addBinding(PARAMS, "phoneEnabled");
     phone.addBinding(PARAMS, "phoneX", { min: -6, max: 6, step: 0.05 });
     phone.addBinding(PARAMS, "phoneY", { min: -6, max: 6, step: 0.05 });
