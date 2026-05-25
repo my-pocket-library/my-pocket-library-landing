@@ -118,6 +118,48 @@ const COVERS: BookCover[] = [
     ink: "#f1e2a4",
     pattern: "stars",
   },
+  {
+    title: "The Trial",
+    author: "Franz Kafka",
+    // baseColor/accent/ink/pattern still drive the spine + back cover
+    // since those are painted procedurally. The front cover renders
+    // the the-trial.jpg image instead (set via `image`).
+    baseColor: "#1a1a1a",
+    accent: "#c4a052",
+    ink: "#e8d49a",
+    pattern: "plain",
+    image: "/images/the-trial.jpg",
+  },
+  {
+    title: "The Hobbit",
+    author: "J.R.R. Tolkien",
+    // Procedural fallback for spine + back; image-driven front cover.
+    baseColor: "#1f3a2a",
+    accent: "#c9a35a",
+    ink: "#e8d6a8",
+    pattern: "ornate",
+    image: "/images/the-hobbit.jpg",
+  },
+  {
+    title: "The Catcher in the Rye",
+    author: "J.D. Salinger",
+    // Procedural fallback for spine + back; image-driven front cover.
+    baseColor: "#8a1f1f",
+    accent: "#f5e7c8",
+    ink: "#f7eddd",
+    pattern: "plain",
+    image: "/images/the-catcher-in-the-rye.jpg",
+  },
+  {
+    title: "Intermezzo",
+    author: "Sally Rooney",
+    // Procedural fallback for spine + back; image-driven front cover.
+    baseColor: "#e8c84a",
+    accent: "#1a1a1a",
+    ink: "#1a1a1a",
+    pattern: "plain",
+    image: "/images/intermezzo.jpg",
+  },
 ];
 
 export { COVERS };

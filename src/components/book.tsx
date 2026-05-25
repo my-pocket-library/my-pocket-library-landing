@@ -6,46 +6,6 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three-stdlib";
 import { PARAMS } from "@/lib/scene-params";
 
-let paperNormalTex: THREE.CanvasTexture | null = null;
-function getPaperNormalTexture(): THREE.CanvasTexture {
-  if (paperNormalTex) return paperNormalTex;
-  if (typeof document === "undefined") {
-    // Server side: return a dummy that will be replaced on the client.
-    return (paperNormalTex = new THREE.CanvasTexture(
-      // tiny placeholder canvas; will be overwritten on client mount
-      typeof OffscreenCanvas !== "undefined"
-        ? (new OffscreenCanvas(2, 2) as unknown as HTMLCanvasElement)
-        : ({ width: 2, height: 2 } as unknown as HTMLCanvasElement),
-    ));
-  }
-  const SIZE = 512;
-  const c = document.createElement("canvas");
-  c.width = SIZE;
-  c.height = SIZE;
-  const ctx = c.getContext("2d");
-  if (!ctx) return (paperNormalTex = new THREE.CanvasTexture(c));
-  const img = ctx.createImageData(SIZE, SIZE);
-  // Each pixel encodes a perturbed surface normal. RGB = (x, y, z) mapped from
-  // [-1,1] -> [0,255]. Default "flat" pixel = (128, 128, 255).
-  for (let i = 0; i < img.data.length; i += 4) {
-    // Two-octave noise: coarse undulation + finer fiber.
-    const nx = (Math.random() - 0.5) * 0.45 + (Math.random() - 0.5) * 0.15;
-    const ny = (Math.random() - 0.5) * 0.45 + (Math.random() - 0.5) * 0.15;
-    img.data[i] = Math.floor((nx * 0.5 + 0.5) * 255);
-    img.data[i + 1] = Math.floor((ny * 0.5 + 0.5) * 255);
-    img.data[i + 2] = 255;
-    img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 3);
-  tex.anisotropy = 4;
-  paperNormalTex = tex;
-  return tex;
-}
-
 export type BookCover = {
   title: string;
   author?: string;
@@ -53,6 +13,11 @@ export type BookCover = {
   accent: string;
   ink: string;
   pattern: "ornate" | "swirl" | "plain" | "stripe" | "emblem" | "stars";
+  /** Optional URL to a real cover image. When set, the procedural cover
+   *  is still painted first (acts as a synchronous fallback while the
+   *  image loads), and the image is then drawn on top, asynchronously,
+   *  with `texture.needsUpdate = true` to refresh the GPU upload. */
+  image?: string;
 };
 
 export type BookProps = {
@@ -84,188 +49,6 @@ function hasBookmarkRibbon(i: number): boolean {
 const RIBBON_PALETTE = ["#8b1d1d", "#1a3a6e", "#3a5e1a", "#724a16", "#3a1a3a"];
 function getRibbonColor(i: number): string {
   return RIBBON_PALETTE[i % RIBBON_PALETTE.length];
-}
-
-// ---------------------------------------------------------------------------
-// Heightmap → normal map conversion (Sobel + fiber noise)
-//
-// Reads luminance from `src` (red channel — we paint grayscale into it), emits
-// a normal map encoding partial derivatives of the height field. A small
-// amount of high-freq noise is mixed into the tangent components so the cover
-// also reads as paper fiber, not just embossed artwork.
-// ---------------------------------------------------------------------------
-function heightToNormalCanvas(
-  src: HTMLCanvasElement,
-  strength = 2.5,
-  fiberAmount = 0.18,
-): HTMLCanvasElement {
-  const W = src.width;
-  const H = src.height;
-  const srcCtx = src.getContext("2d");
-  const out = document.createElement("canvas");
-  out.width = W;
-  out.height = H;
-  const outCtx = out.getContext("2d");
-  if (!srcCtx || !outCtx) return out;
-  const heightData = srcCtx.getImageData(0, 0, W, H).data;
-  const outImg = outCtx.createImageData(W, H);
-
-  const at = (x: number, y: number) => {
-    const xx = x < 0 ? 0 : x >= W ? W - 1 : x;
-    const yy = y < 0 ? 0 : y >= H ? H - 1 : y;
-    return heightData[(yy * W + xx) * 4] / 255;
-  };
-
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const dx = (at(x + 1, y) - at(x - 1, y)) * strength;
-      const dy = (at(x, y + 1) - at(x, y - 1)) * strength;
-      let nx = -dx + (Math.random() - 0.5) * fiberAmount;
-      let ny = -dy + (Math.random() - 0.5) * fiberAmount;
-      let nz = 1;
-      const len = Math.hypot(nx, ny, nz);
-      nx /= len;
-      ny /= len;
-      nz /= len;
-      const i = (y * W + x) * 4;
-      outImg.data[i] = Math.floor((nx * 0.5 + 0.5) * 255);
-      outImg.data[i + 1] = Math.floor((ny * 0.5 + 0.5) * 255);
-      outImg.data[i + 2] = Math.floor((nz * 0.5 + 0.5) * 255);
-      outImg.data[i + 3] = 255;
-    }
-  }
-
-  outCtx.putImageData(outImg, 0, 0);
-  return out;
-}
-
-// Paints the *embossable* layer of the cover (pattern + title + author) onto a
-// grayscale canvas where lighter pixels = raised ink. Background is black so
-// the unprinted card stock sits at zero relief.
-function paintCoverHeight(canvas: HTMLCanvasElement, cover: BookCover) {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const W = canvas.width;
-  const H = canvas.height;
-
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
-
-  // Patterns — drawn in mid-gray so they get a subtle deboss.
-  ctx.save();
-  ctx.strokeStyle = "rgb(140, 140, 140)";
-  ctx.fillStyle = "rgb(140, 140, 140)";
-  const SX = W / 512;
-  const SY = H / 768;
-  if (cover.pattern === "ornate") {
-    ctx.lineWidth = 6 * SX;
-    ctx.strokeRect(36 * SX, 36 * SY, W - 72 * SX, H - 72 * SY);
-    ctx.lineWidth = 2 * SX;
-    ctx.strokeRect(56 * SX, 56 * SY, W - 112 * SX, H - 112 * SY);
-    for (const [cx, cy] of [
-      [80 * SX, 80 * SY],
-      [W - 80 * SX, 80 * SY],
-      [80 * SX, H - 80 * SY],
-      [W - 80 * SX, H - 80 * SY],
-    ]) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, 18 * SX, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  } else if (cover.pattern === "swirl") {
-    ctx.lineWidth = 3 * SX;
-    for (let r = 40 * SX; r < W; r += 60 * SX) {
-      ctx.beginPath();
-      ctx.arc(W / 2, H * 0.6, r, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  } else if (cover.pattern === "stripe") {
-    for (let y = 0; y < H; y += 32 * SY) {
-      ctx.fillRect(0, y, W, 12 * SY);
-    }
-  } else if (cover.pattern === "emblem") {
-    ctx.lineWidth = 4 * SX;
-    const cx = W / 2;
-    const cy = H * 0.55;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, W * 0.28, H * 0.18, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, W * 0.22, H * 0.14, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (cover.pattern === "stars") {
-    for (let i = 0; i < 24; i++) {
-      const x = (i * 137.5 * SX) % W;
-      const y = (i * 211.3 * SY) % H;
-      ctx.beginPath();
-      ctx.arc(x, y, (3 + (i % 4)) * SX, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else {
-    ctx.lineWidth = 4 * SX;
-    ctx.strokeRect(48 * SX, 48 * SY, W - 96 * SX, H - 96 * SY);
-  }
-  ctx.restore();
-
-  // Title — fully white (max emboss height).
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const words = cover.title.toUpperCase().split(" ");
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const test = cur ? `${cur} ${w}` : w;
-    if (test.length > 12) {
-      if (cur) lines.push(cur);
-      cur = w;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  const fontSize =
-    Math.min(72, 520 / Math.max(...lines.map((l) => l.length))) * SX;
-  ctx.font = `700 ${fontSize}px "Times New Roman", serif`;
-  const totalH = lines.length * fontSize * 1.05;
-  const startY = H * 0.42 - totalH / 2;
-  lines.forEach((line, i) => {
-    ctx.fillText(line, W / 2, startY + i * fontSize * 1.05);
-  });
-
-  // Author — half-gray (subtle relief).
-  if (cover.author) {
-    ctx.fillStyle = "rgb(160, 160, 160)";
-    ctx.font = `italic ${28 * SX}px "Times New Roman", serif`;
-    ctx.fillText(cover.author, W / 2, H * 0.82);
-  }
-}
-
-// Spine heightfield — vertical title plus the two horizontal bands.
-function paintSpineHeight(canvas: HTMLCanvasElement, cover: BookCover) {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const W = canvas.width;
-  const H = canvas.height;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
-
-  // Bands (slight deboss).
-  ctx.fillStyle = "rgb(150,150,150)";
-  ctx.fillRect(0, H * 0.1, W, 6 * (W / 128));
-  ctx.fillRect(0, H * 0.9 - 6 * (W / 128), W, 6 * (W / 128));
-
-  // Vertical title at full white.
-  ctx.save();
-  ctx.translate(W / 2, H / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const fontSize = Math.min(34, 400 / cover.title.length) * (W / 128);
-  ctx.font = `600 ${fontSize}px "Times New Roman", serif`;
-  ctx.fillText(cover.title.toUpperCase(), 0, 0);
-  ctx.restore();
 }
 
 export function paintCover(
@@ -802,14 +585,7 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   const showRibbon = useMemo(() => hasBookmarkRibbon(index), [index]);
   const ribbonColor = useMemo(() => getRibbonColor(index), [index]);
 
-  const {
-    coverTex,
-    spineTex,
-    pagesTex,
-    pagesEdgeTex,
-    coverNormalTex,
-    spineNormalTex,
-  } = useMemo(() => {
+  const { coverTex, spineTex, pagesTex, pagesEdgeTex } = useMemo(() => {
       const make = (
         width: number,
         height: number,
@@ -827,10 +603,30 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
         tex.anisotropy = 8;
         return tex;
       };
-      // Color textures — sRGB encoded.
-      const coverTex = make(512, 768, (c) => paintCover(c, cover, wear), {
-        srgb: true,
-      });
+      // Cover texture — paint the procedural artwork synchronously as a
+      // fallback, then (if this book has a real cover image) load that
+      // image and draw it on top once it's ready. `texture.needsUpdate`
+      // triggers a re-upload to the GPU. We can't use the `make` helper
+      // here because we need a handle to the canvas to overlay onto it.
+      const coverCanvas = document.createElement("canvas");
+      coverCanvas.width = 512;
+      coverCanvas.height = 768;
+      paintCover(coverCanvas, cover, wear);
+      const coverTex = new THREE.CanvasTexture(coverCanvas);
+      coverTex.colorSpace = THREE.SRGBColorSpace;
+      coverTex.anisotropy = 8;
+
+      if (cover.image && typeof window !== "undefined") {
+        const img = new window.Image();
+        img.src = cover.image;
+        img.onload = () => {
+          const ctx = coverCanvas.getContext("2d");
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0, coverCanvas.width, coverCanvas.height);
+          coverTex.needsUpdate = true;
+        };
+      }
+
       const spineTex = make(128, 768, (c) => paintSpine(c, cover, wear), {
         srgb: true,
       });
@@ -855,40 +651,8 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       pagesEdgeTex.center.set(0.5, 0.5);
       pagesEdgeTex.rotation = Math.PI / 2;
 
-      // Build per-book normal maps from a transient grayscale heightmap of
-      // just the embossable artwork (pattern + title). Then convert via
-      // Sobel + add fiber noise. Normal maps stay in linear color space.
-      const coverH = document.createElement("canvas");
-      coverH.width = 256;
-      coverH.height = 384;
-      paintCoverHeight(coverH, cover);
-      const coverNormalCanvas = heightToNormalCanvas(coverH, 2.6, 0.22);
-      const coverNormalTex = new THREE.CanvasTexture(coverNormalCanvas);
-      coverNormalTex.colorSpace = THREE.NoColorSpace;
-      coverNormalTex.anisotropy = 4;
-
-      const spineH = document.createElement("canvas");
-      spineH.width = 64;
-      spineH.height = 384;
-      paintSpineHeight(spineH, cover);
-      const spineNormalCanvas = heightToNormalCanvas(spineH, 2.0, 0.18);
-      const spineNormalTex = new THREE.CanvasTexture(spineNormalCanvas);
-      spineNormalTex.colorSpace = THREE.NoColorSpace;
-      spineNormalTex.anisotropy = 4;
-
-      return {
-        coverTex,
-        spineTex,
-        pagesTex,
-        pagesEdgeTex,
-        coverNormalTex,
-        spineNormalTex,
-      };
+      return { coverTex, spineTex, pagesTex, pagesEdgeTex };
     }, [cover, wear]);
-
-  // Shared paper-fiber normal map for the matte page faces, inner edges,
-  // and anywhere we want surface relief without artwork emboss.
-  const paperNormal = useMemo(() => getPaperNormalTexture(), []);
 
   // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
   //
@@ -906,49 +670,35 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   //
   // All board side-strips (+X / ±Y) and the spine's ±Y use coverEdge.
   const standardMaterials = useMemo(() => {
-    // Paper — high roughness, light fiber normal relief.
+    // All materials are flat colour/texture only — no normal maps. Books
+    // render as plain printed objects, not embossed ones.
     const pages = new THREE.MeshStandardMaterial({
       map: pagesTex,
       roughness: 0.95,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.15, 0.15),
     });
     // Same paper material but using the rotated texture, for the open-edge
     // face where page lines need to run vertically.
     const pagesEdge = new THREE.MeshStandardMaterial({
       map: pagesEdgeTex,
       roughness: 0.95,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.15, 0.15),
     });
-    // Spine artwork — vertical title emboss + hinge creases via spine normal.
     const spineMat = new THREE.MeshStandardMaterial({
       map: spineTex,
       roughness: 0.75,
-      normalMap: spineNormalTex,
-      normalScale: new THREE.Vector2(0.4, 0.4),
     });
-    // Front cover artwork — emboss normal raises title + pattern.
     const front = new THREE.MeshStandardMaterial({
       map: coverTex,
       roughness: 0.78,
-      normalMap: coverNormalTex,
-      normalScale: new THREE.Vector2(0.55, 0.55),
     });
-    // Back cover — darker than the cover, slight paper-fiber relief.
     const back = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cover.baseColor).multiplyScalar(0.42),
       roughness: 0.85,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.22, 0.22),
     });
     // Cover edge — the binding cloth/paper wrapping around the thin sides of
     // the boards. Slightly darker than the cover face so it reads as a fold.
     const coverEdge = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cover.baseColor).multiplyScalar(0.75),
       roughness: 0.85,
-      normalMap: paperNormal,
-      normalScale: new THREE.Vector2(0.25, 0.25),
     });
     // Inner faces — heavily darkened so the recess between cover and pages
     // reads as ambient-occluded shadow even without runtime shadow rendering.
@@ -979,9 +729,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
     spineTex,
     pagesTex,
     pagesEdgeTex,
-    coverNormalTex,
-    spineNormalTex,
-    paperNormal,
     cover.baseColor,
   ]);
 

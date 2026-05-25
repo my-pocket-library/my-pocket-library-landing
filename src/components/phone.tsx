@@ -588,6 +588,29 @@ function BookContent({
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
+
+      // If this book has a real cover image, load it and overlay it at
+      // exactly the same rect paintBookContent used for the procedural
+      // cover. Same coords as in paintBookContent above:
+      //   width  = canvas.width × 0.55
+      //   x      = (canvas.width − width) / 2
+      //   y      = canvas.height × 0.20
+      //   height = width × (768 / 512)
+      if (cover.image && typeof window !== "undefined") {
+        const img = new window.Image();
+        img.src = cover.image;
+        img.onload = () => {
+          const ctx = c.getContext("2d");
+          if (!ctx) return;
+          const coverDispW = c.width * 0.55;
+          const coverDispH = coverDispW * (768 / 512);
+          const coverX = (c.width - coverDispW) / 2;
+          const coverY = c.height * 0.20;
+          ctx.drawImage(img, coverX, coverY, coverDispW, coverDispH);
+          t.needsUpdate = true;
+        };
+      }
+
       return t;
     });
   }, [covers]);
