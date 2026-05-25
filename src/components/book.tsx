@@ -22,7 +22,7 @@ export type BookCover = {
 
 export type BookProps = {
   cover: BookCover;
-  /** Stable book index — drives per-book wear, ribbon, and color variation. */
+  /** Stable book index — drives per-book wear and color variation. */
   index?: number;
   /** Per-book opacity in [0, 1], written by the parent scene each frame.
    *  Used to fade books in/out as they rotate through the carousel so only
@@ -38,17 +38,6 @@ export type BookProps = {
 // Wear in [0.35, 1.0]. Stable per index.
 function getWearAmount(i: number): number {
   return 0.35 + (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.65;
-}
-
-// Whether this book gets a bookmark ribbon. ~half of books.
-function hasBookmarkRibbon(i: number): boolean {
-  return ((i * 7 + 3) % 11) % 2 === 0;
-}
-
-// Ribbon colors — picked deterministically per index from a small palette.
-const RIBBON_PALETTE = ["#8b1d1d", "#1a3a6e", "#3a5e1a", "#724a16", "#3a1a3a"];
-function getRibbonColor(i: number): string {
-  return RIBBON_PALETTE[i % RIBBON_PALETTE.length];
 }
 
 export function paintCover(
@@ -578,12 +567,9 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   const backBoardRef = useRef<THREE.Mesh>(null);
   const spineRef = useRef<THREE.Mesh>(null);
   const paperMeshRef = useRef<THREE.Mesh>(null);
-  const ribbonRef = useRef<THREE.Mesh>(null);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
 
   const wear = useMemo(() => getWearAmount(index), [index]);
-  const showRibbon = useMemo(() => hasBookmarkRibbon(index), [index]);
-  const ribbonColor = useMemo(() => getRibbonColor(index), [index]);
 
   const { coverTex, spineTex, pagesTex, pagesEdgeTex } = useMemo(() => {
       const make = (
@@ -823,26 +809,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       );
       paperMesh.position.set(layout.paper.x, layout.paper.y, layout.paper.z);
 
-      // Reposition the ribbon (if this book has one) to hang from inside the
-      // paper block and stick out below the bottom edge.
-      const ribbon = ribbonRef.current;
-      if (ribbon) {
-        const ribbonW = layout.paper.w * 0.07;
-        const overhang = layout.paper.h * 0.07;
-        // Half hidden inside the paper, half hanging below.
-        const insideLen = layout.paper.h * 0.4;
-        const totalLen = insideLen + overhang;
-        ribbon.scale.set(ribbonW, totalLen, 1);
-        // Center y: half of (insideLen − overhang) below the paper bottom edge.
-        const centerY = -layout.paper.h / 2 + (insideLen - overhang) / 2;
-        // Tuck toward the spine + sit slightly forward of the back cover so
-        // the ribbon visibly emerges from the binding.
-        const ribbonX = layout.paper.x - layout.paper.w * 0.32;
-        const ribbonZ = layout.paper.d * 0.18;
-        ribbon.position.set(ribbonX, centerY, ribbonZ);
-        ribbon.rotation.z = Math.sin(index * 1.7) * 0.05; // tiny natural tilt
-      }
-
       sizeRef.current = [w, h, d];
     }
 
@@ -879,8 +845,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
     for (const mat of standardMaterials.backBoard) applyOpacity(mat);
     for (const mat of standardMaterials.spine) applyOpacity(mat);
     for (const mat of standardMaterials.paper) applyOpacity(mat);
-    const ribbon = ribbonRef.current;
-    if (ribbon) applyOpacity(ribbon.material as THREE.Material);
   });
 
   useEffect(() => {
@@ -908,16 +872,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       <mesh ref={paperMeshRef} material={standardMaterials.paper}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      {showRibbon ? (
-        <mesh ref={ribbonRef}>
-          <planeGeometry args={[1, 1]} />
-          <meshStandardMaterial
-            color={ribbonColor}
-            roughness={0.85}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      ) : null}
     </group>
   );
 }
