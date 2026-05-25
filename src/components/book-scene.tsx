@@ -13,117 +13,14 @@ import { Book, type BookCover } from "./book";
 import { Phone } from "./phone";
 import { PARAMS } from "@/lib/scene-params";
 
-const COVERS: BookCover[] = [
-  {
-    title: "On the Feast",
-    author: "L. Mysteries",
-    baseColor: "#efe1d4",
-    accent: "#7a4a39",
-    ink: "#2a1f1a",
-    pattern: "emblem",
-  },
-  {
-    title: "Rafael Okonkwo",
-    author: "a novel",
-    baseColor: "#f0c8cf",
-    accent: "#7a2435",
-    ink: "#3b1018",
-    pattern: "ornate",
-  },
-  {
-    title: "The Garden of Flowers",
-    baseColor: "#1c3a2b",
-    accent: "#c9a35a",
-    ink: "#e8d6a8",
-    pattern: "ornate",
-  },
-  {
-    title: "When the Sky is Rising",
-    baseColor: "#f1e7d2",
-    accent: "#1e2a3a",
-    ink: "#1e2a3a",
-    pattern: "plain",
-  },
-  {
-    title: "Above the Clouds",
-    author: "Albert Camus",
-    baseColor: "#f5e9c8",
-    accent: "#7b8a55",
-    ink: "#2c3014",
-    pattern: "plain",
-  },
-  {
-    title: "Eleanor Vance",
-    author: "Winner of the Booker Prize",
-    baseColor: "#1f4a8a",
-    accent: "#f5e9c8",
-    ink: "#f5e9c8",
-    pattern: "stripe",
-  },
-  {
-    title: "The Last Ghost",
-    baseColor: "#0c0c0c",
-    accent: "#e8c84a",
-    ink: "#e8c84a",
-    pattern: "plain",
-  },
-  {
-    title: "The Quiet Hour",
-    baseColor: "#f5ecd6",
-    accent: "#3a3a3a",
-    ink: "#1a1a1a",
-    pattern: "plain",
-  },
-  {
-    title: "Watcher of the Peaks",
-    author: "Conrad Vale",
-    baseColor: "#c8543b",
-    accent: "#f3dcc6",
-    ink: "#f7e9d6",
-    pattern: "swirl",
-  },
-  {
-    title: "Where the Oranges Bloom",
-    author: "Adela Marchetti",
-    baseColor: "#c9651f",
-    accent: "#f4e1c4",
-    ink: "#f7ead4",
-    pattern: "ornate",
-  },
-  {
-    title: "The R",
-    baseColor: "#e8dcc4",
-    accent: "#3a2a1a",
-    ink: "#2a1a10",
-    pattern: "plain",
-  },
-  {
-    title: "Codex Nocturne",
-    baseColor: "#0e0e12",
-    accent: "#c9a35a",
-    ink: "#d8bf86",
-    pattern: "ornate",
-  },
-  {
-    title: "The Gorgon Medusa",
-    baseColor: "#1d4540",
-    accent: "#dec07a",
-    ink: "#ead49a",
-    pattern: "emblem",
-  },
-  {
-    title: "The Lantern and the Dragon",
-    baseColor: "#1a2c5a",
-    accent: "#e9d27a",
-    ink: "#f1e2a4",
-    pattern: "stars",
-  },
+// 9 real, image-backed books. The COVERS array below repeats this list
+// twice so the carousel has 18 entries — each duplicate sits 180° from
+// its sibling, so duplicates are never visible on-screen at the same
+// time (only the front ~5 books are rendered with opacity 1).
+const BOOKS: BookCover[] = [
   {
     title: "The Trial",
     author: "Franz Kafka",
-    // baseColor/accent/ink/pattern still drive the spine + back cover
-    // since those are painted procedurally. The front cover renders
-    // the the-trial.jpg image instead (set via `image`).
     baseColor: "#1a1a1a",
     accent: "#c4a052",
     ink: "#e8d49a",
@@ -133,7 +30,6 @@ const COVERS: BookCover[] = [
   {
     title: "The Hobbit",
     author: "J.R.R. Tolkien",
-    // Procedural fallback for spine + back; image-driven front cover.
     baseColor: "#1f3a2a",
     accent: "#c9a35a",
     ink: "#e8d6a8",
@@ -143,7 +39,6 @@ const COVERS: BookCover[] = [
   {
     title: "The Catcher in the Rye",
     author: "J.D. Salinger",
-    // Procedural fallback for spine + back; image-driven front cover.
     baseColor: "#8a1f1f",
     accent: "#f5e7c8",
     ink: "#f7eddd",
@@ -153,7 +48,6 @@ const COVERS: BookCover[] = [
   {
     title: "Intermezzo",
     author: "Sally Rooney",
-    // Procedural fallback for spine + back; image-driven front cover.
     baseColor: "#e8c84a",
     accent: "#1a1a1a",
     ink: "#1a1a1a",
@@ -163,7 +57,6 @@ const COVERS: BookCover[] = [
   {
     title: "Atomic Habits",
     author: "James Clear",
-    // Procedural fallback for spine + back; image-driven front cover.
     baseColor: "#f4a821",
     accent: "#1a1a1a",
     ink: "#1a1a1a",
@@ -173,7 +66,6 @@ const COVERS: BookCover[] = [
   {
     title: "The Great Gatsby",
     author: "F. Scott Fitzgerald",
-    // Procedural fallback for spine + back; image-driven front cover.
     // Iconic Francis Cugat dark-blue + orange/yellow palette.
     baseColor: "#16264a",
     accent: "#e8a23c",
@@ -183,7 +75,6 @@ const COVERS: BookCover[] = [
   },
   {
     title: "Rüyaların Çağrısı",
-    // Procedural fallback for spine + back; image-driven front cover.
     baseColor: "#2a3d5c",
     accent: "#d4b87a",
     ink: "#ead49a",
@@ -193,7 +84,6 @@ const COVERS: BookCover[] = [
   {
     title: "It",
     author: "Stephen King",
-    // Procedural fallback for spine + back; image-driven front cover.
     // Pennywise red on near-white — matches the classic mass-market jacket.
     baseColor: "#f4ede0",
     accent: "#c8331f",
@@ -204,7 +94,6 @@ const COVERS: BookCover[] = [
   {
     title: "Sapiens",
     author: "Yuval Noah Harari",
-    // Procedural fallback for spine + back; image-driven front cover.
     // Cream cover with red thumbprint accent — Harari's English edition.
     baseColor: "#efe4c8",
     accent: "#9c2018",
@@ -213,6 +102,8 @@ const COVERS: BookCover[] = [
     image: "/images/sapiens.jpg",
   },
 ];
+
+const COVERS: BookCover[] = [...BOOKS, ...BOOKS];
 
 export { COVERS };
 
