@@ -233,77 +233,45 @@ export function paintCover(
   drawCornerWear(W, H, -1, -1);
 }
 
-function paintSpine(
-  canvas: HTMLCanvasElement,
-  cover: BookCover,
-  wear = 1,
-) {
+/**
+ * The same serif font stack the page's HTML headings render in. The h1/h2
+ * elements use Tailwind's `font-serif` utility, which resolves to this
+ * stack — so the spine title visually matches the headline typeface.
+ */
+const HEADING_FONT_FAMILY =
+  'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif';
+
+/**
+ * Minimal modern spine: flat baseColor + vertical title in `ink` colour.
+ * No edge vignette, no accent bands, no hinge creases, no wear scratches —
+ * the visual goal is clean and contemporary rather than aged-hardcover.
+ */
+function paintSpine(canvas: HTMLCanvasElement, cover: BookCover) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const W = canvas.width;
   const H = canvas.height;
+
+  // Flat colour fill — no gradient.
   ctx.fillStyle = cover.baseColor;
   ctx.fillRect(0, 0, W, H);
 
-  // edge shadow
-  const grad = ctx.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, "rgba(0,0,0,0.55)");
-  grad.addColorStop(0.5, "rgba(0,0,0,0)");
-  grad.addColorStop(1, "rgba(0,0,0,0.55)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // band
-  ctx.fillStyle = cover.accent;
-  ctx.globalAlpha = 0.5;
-  ctx.fillRect(0, H * 0.1, W, 6);
-  ctx.fillRect(0, H * 0.9 - 6, W, 6);
-  ctx.globalAlpha = 1;
-
-  // Hinge creases — two faint vertical dark lines a small inset from each
-  // edge, simulating the joint where the cover folds around the binding.
-  const hingeInset = Math.max(2, W * 0.08);
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.32)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(hingeInset, 0);
-  ctx.lineTo(hingeInset, H);
-  ctx.moveTo(W - hingeInset, 0);
-  ctx.lineTo(W - hingeInset, H);
-  ctx.stroke();
-  // A second, fainter line just inside each crease, like a printed accent line.
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.14)";
-  ctx.beginPath();
-  ctx.moveTo(hingeInset + 2, 0);
-  ctx.lineTo(hingeInset + 2, H);
-  ctx.moveTo(W - hingeInset - 2, 0);
-  ctx.lineTo(W - hingeInset - 2, H);
-  ctx.stroke();
-
-  // vertical title
+  // Vertical title — serif, matching the page's HTML headings (`font-serif`
+  // class on h1/h2). Medium weight reads naturally on a real serif at this
+  // size. Font size scales with canvas width so the title stays consistent
+  // across book-size tweaks.
   ctx.save();
   ctx.translate(W / 2, H / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillStyle = cover.ink;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `600 ${Math.min(34, 400 / cover.title.length)}px "Times New Roman", serif`;
-  ctx.fillText(cover.title.toUpperCase(), 0, 0);
+  const fontSize = Math.min(32, 380 / cover.title.length) * (W / 128);
+  ctx.font = `500 ${fontSize}px ${HEADING_FONT_FAMILY}`;
+  // Title case as stored in COVERS — no .toUpperCase() so it renders
+  // exactly as written ("The Hobbit", "Sapiens", "Atomic Habits", etc.).
+  ctx.fillText(cover.title, 0, 0);
   ctx.restore();
-
-  // Wear — sparse vertical scratches on the spine for battered books.
-  const scratchCount = Math.floor(8 * wear);
-  for (let i = 0; i < scratchCount; i++) {
-    const x = Math.random() * W;
-    const y0 = Math.random() * H * 0.85;
-    const len = 20 + Math.random() * 80;
-    ctx.strokeStyle = `rgba(0, 0, 0, ${0.08 + Math.random() * 0.12})`;
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, y0);
-    ctx.lineTo(x + (Math.random() - 0.5) * 2, y0 + len);
-    ctx.stroke();
-  }
 }
 
 function paintPages(canvas: HTMLCanvasElement) {
@@ -613,9 +581,26 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
         };
       }
 
-      const spineTex = make(128, 768, (c) => paintSpine(c, cover, wear), {
-        srgb: true,
-      });
+      // Spine texture — flat baseColor + vertical title in the same serif
+      // stack the page's HTML headings use. We still hook
+      // `document.fonts.ready` and re-paint once fonts settle, in case a
+      // future custom serif is added to the loader — system serifs
+      // (Georgia / ui-serif) are present on first paint so this is a
+      // free safety net.
+      const spineCanvas = document.createElement("canvas");
+      spineCanvas.width = 128;
+      spineCanvas.height = 768;
+      paintSpine(spineCanvas, cover);
+      const spineTex = new THREE.CanvasTexture(spineCanvas);
+      spineTex.colorSpace = THREE.SRGBColorSpace;
+      spineTex.anisotropy = 8;
+      if (typeof document !== "undefined" && document.fonts?.ready) {
+        document.fonts.ready.then(() => {
+          paintSpine(spineCanvas, cover);
+          spineTex.needsUpdate = true;
+        });
+      }
+
       // Pages texture — horizontal stripes representing dense page edges.
       // We paint ONCE and create TWO textures over the same canvas: the
       // upright one for the top/bottom faces (where horizontal stripes read
