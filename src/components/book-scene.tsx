@@ -160,6 +160,36 @@ const COVERS: BookCover[] = [
     pattern: "plain",
     image: "/images/intermezzo.jpg",
   },
+  {
+    title: "Atomic Habits",
+    author: "James Clear",
+    // Procedural fallback for spine + back; image-driven front cover.
+    baseColor: "#f4a821",
+    accent: "#1a1a1a",
+    ink: "#1a1a1a",
+    pattern: "plain",
+    image: "/images/atomic-habits.jpg",
+  },
+  {
+    title: "The Great Gatsby",
+    author: "F. Scott Fitzgerald",
+    // Procedural fallback for spine + back; image-driven front cover.
+    // Iconic Francis Cugat dark-blue + orange/yellow palette.
+    baseColor: "#16264a",
+    accent: "#e8a23c",
+    ink: "#f5d089",
+    pattern: "plain",
+    image: "/images/the-great-gatsby.jpg",
+  },
+  {
+    title: "Rüyaların Çağrısı",
+    // Procedural fallback for spine + back; image-driven front cover.
+    baseColor: "#2a3d5c",
+    accent: "#d4b87a",
+    ink: "#ead49a",
+    pattern: "plain",
+    image: "/images/ruyalarin-cagrisi.jpg",
+  },
 ];
 
 export { COVERS };
