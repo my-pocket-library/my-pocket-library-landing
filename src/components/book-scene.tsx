@@ -190,6 +190,28 @@ const COVERS: BookCover[] = [
     pattern: "plain",
     image: "/images/ruyalarin-cagrisi.jpg",
   },
+  {
+    title: "It",
+    author: "Stephen King",
+    // Procedural fallback for spine + back; image-driven front cover.
+    // Pennywise red on near-white — matches the classic mass-market jacket.
+    baseColor: "#f4ede0",
+    accent: "#c8331f",
+    ink: "#a52419",
+    pattern: "plain",
+    image: "/images/it.jpg",
+  },
+  {
+    title: "Sapiens",
+    author: "Yuval Noah Harari",
+    // Procedural fallback for spine + back; image-driven front cover.
+    // Cream cover with red thumbprint accent — Harari's English edition.
+    baseColor: "#efe4c8",
+    accent: "#9c2018",
+    ink: "#1a1a1a",
+    pattern: "plain",
+    image: "/images/sapiens.jpg",
+  },
 ];
 
 export { COVERS };
