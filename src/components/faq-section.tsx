@@ -52,7 +52,9 @@ export function FaqSection() {
         </div>
 
         <div className="mt-12 md:mt-16">
-          <Accordion>
+          {/* `multiple` lets several questions stay open at once — Base UI
+           *  defaults it to false (single-open accordion). */}
+          <Accordion multiple>
             {/* MDX content lives in src/content/faq.mdx — each
              *  <FaqItem question="…">…</FaqItem> in there renders as one
              *  AccordionItem here via the `components` prop. */}
