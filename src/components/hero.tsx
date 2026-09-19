@@ -1,42 +1,40 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { AppStoreBadge } from "@/components/app-store-badge";
 import { BookScene } from "@/components/book-scene";
 import { Tweakpane } from "@/components/tweakpane";
 
 export function Hero() {
   return (
-    <section className="relative isolate min-h-screen overflow-hidden bg-ana-1">
+    <section className="relative isolate flex min-h-svh flex-col overflow-hidden bg-ana-1">
       <RadialPattern />
 
-      <div className="pointer-events-none absolute left-1/2 top-[36%] bottom-0 w-screen -translate-x-1/2">
+      <div className="pointer-events-none relative order-2 h-[360px] w-full shrink-0 md:h-[460px] lg:h-[520px]">
         <BookScene />
       </div>
 
-      <div className="pointer-events-none relative z-10 mx-auto flex max-w-[1100px] flex-col items-center px-6 pt-44 text-center md:pt-52">
-        <h1 className="font-serif text-balance text-5xl font-medium leading-[1.05] tracking-[-0.02em] text-black md:text-7xl">
-          Your library. In your pocket.
+      <div className="pointer-events-none relative z-10 mx-auto flex max-w-[1100px] flex-col items-center w-full px-6 pt-36 text-center">
+        <h1 className="font-serif text-balance text-[clamp(2.5rem,10vw,3rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-7xl">
+          Your library. <span className="italic">In your pocket.</span>
         </h1>
-        <p className="mt-6 max-w-xl text-balance text-base text-black/70 md:text-lg">
+        <p className="mt-6 max-w-xl text-balance text-base text-ink/70 md:text-lg">
           Scan the books on your shelf to build a digital catalog, then track
           what you&rsquo;ve read, what you&rsquo;re reading, and what&rsquo;s
           waiting next.
         </p>
 
-        <div className="pointer-events-auto mt-8 flex items-center gap-3">
+        <div className="pointer-events-auto mt-8 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
           <AppStoreBadge />
-          <Button
-            size="lg"
-            variant="ghost"
-            className="h-12 rounded-full px-6 text-[15px] text-black hover:bg-black/5 hover:text-black"
+          <a
+            href="#app"
+            className="inline-flex h-12 items-center justify-center rounded-full px-6 text-[15px] text-ink hover:bg-black/5 hover:text-ink"
           >
             See how it works
-          </Button>
+          </a>
         </div>
       </div>
 
-      <Tweakpane />
+      {process.env.NODE_ENV === "development" && <Tweakpane />}
     </section>
   );
 }
@@ -45,67 +43,7 @@ function RadialPattern() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute left-1/2 top-[42%] -z-0 -translate-x-1/2 -translate-y-1/2"
-    >
-      <svg
-        width="1800"
-        height="1800"
-        viewBox="0 0 1800 1800"
-        fill="none"
-        className="opacity-[0.14]"
-      >
-        <defs>
-          <radialGradient id="ring-fade" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.5" />
-            <stop offset="70%" stopColor="white" stopOpacity="0.1" />
-            <stop offset="100%" stopColor="white" stopOpacity="0" />
-          </radialGradient>
-          <mask id="ring-mask">
-            <rect width="100%" height="100%" fill="url(#ring-fade)" />
-          </mask>
-        </defs>
-        <g
-          mask="url(#ring-mask)"
-          stroke="black"
-          strokeWidth="1"
-          fill="none"
-          opacity="0.7"
-        >
-          {Array.from({ length: 12 }).map((_, i) => (
-            <circle
-              key={i}
-              cx="900"
-              cy="900"
-              r={120 + i * 70}
-              strokeDasharray={i % 3 === 0 ? "0" : "2 6"}
-            />
-          ))}
-          {Array.from({ length: 12 }).map((_, i) => {
-            const a = (i / 12) * Math.PI * 2;
-            const x1 = (900 + Math.cos(a) * 60).toFixed(2);
-            const y1 = (900 + Math.sin(a) * 60).toFixed(2);
-            const x2 = (900 + Math.cos(a) * 880).toFixed(2);
-            const y2 = (900 + Math.sin(a) * 880).toFixed(2);
-            return (
-              <line
-                key={`s-${i}`}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                opacity="0.25"
-              />
-            );
-          })}
-          {Array.from({ length: 40 }).map((_, i) => {
-            const a = (i / 40) * Math.PI * 2;
-            const r = 200 + (i % 7) * 90;
-            const x = (900 + Math.cos(a) * r).toFixed(2);
-            const y = (900 + Math.sin(a) * r).toFixed(2);
-            return <circle key={`d-${i}`} cx={x} cy={y} r="2" fill="black" />;
-          })}
-        </g>
-      </svg>
-    </div>
+      className="pointer-events-none absolute inset-0 -z-10 bg-[url('/brand/pattern.svg')] [mask-image:linear-gradient(black,transparent_75%)]"
+    />
   );
 }

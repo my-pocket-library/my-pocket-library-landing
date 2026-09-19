@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280" width="280" height="280">
+  <g fill="none" stroke="#0E2472" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- the book being added, on its way to the empty slot -->
+    <g transform="rotate(-13 173 88)">
+      <rect x="150" y="44" width="46" height="88" rx="5" fill="#EE4C2C"/>
+      <rect x="150" y="44" width="9" height="88" rx="5" fill="#0E2472" opacity="0.22" stroke="none"/>
+      <rect x="164" y="88" width="26" height="26" rx="3" fill="#FDFAF4"/>
+      <path d="M169 94 v14M174 94 v14M179 94 v14M184 94 v14" stroke="#0E2472" stroke-width="2.4"/>
+      <path d="M164 62 h22M164 71 h14" stroke="#FDFAF4" stroke-width="2.4"/>
+    </g>
+
+    <!-- lift lines -->
+    <path d="M120 58 l-14 -10M113 78 l-16 -3M129 41 l-8 -14" stroke="#EE4C2C"/>
+
+    <!-- sparkle -->
+    <path d="M238 52 c2.5 13 6 16.5 19 19 -13 2.5 -16.5 6 -19 19 -2.5 -13 -6 -16.5 -19 -19 13 -2.5 16.5 -6 19 -19 z" fill="#EE4C2C" stroke="none"/>
+
+    <!-- the empty slot it is heading for -->
+    <rect x="158" y="142" width="30" height="68" rx="4" stroke-width="2.6" stroke-dasharray="9 8"/>
+
+    <!-- shelved books -->
+    <rect x="62" y="146" width="28" height="64" rx="4" fill="#FDFAF4"/>
+    <path d="M68 158 h16M68 166 h10"/>
+
+    <rect x="94" y="128" width="32" height="82" rx="4" fill="#EE4C2C"/>
+    <path d="M101 142 h18M101 151 h11" stroke="#FDFAF4"/>
+
+    <rect x="130" y="158" width="24" height="52" rx="4" fill="#FDFAF4"/>
+    <path d="M136 170 h12"/>
+
+    <!-- shelf -->
+    <rect x="43" y="210" width="194" height="16" rx="6" fill="#FDFAF4"/>
+    <path d="M60 226 v22M220 226 v22"/>
+  </g>
+</svg>

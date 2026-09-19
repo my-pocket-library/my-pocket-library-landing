@@ -375,7 +375,7 @@ function LiveFog() {
     <fog
       ref={fogRef}
       attach="fog"
-      args={["#f4eee2", PARAMS.fogNear, PARAMS.fogFar]}
+      args={["#fdfaf4", PARAMS.fogNear, PARAMS.fogFar]}
     />
   );
 }
@@ -434,7 +434,7 @@ export function BookScene() {
         gl={{ antialias: true, alpha: true }}
         className="!absolute inset-0"
       >
-        <color attach="background" args={["#f4eee2"]} />
+        <color attach="background" args={["#fdfaf4"]} />
         <LiveFog />
         <CameraRig />
         <LiveLights />

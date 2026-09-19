@@ -9,8 +9,7 @@ const nextConfig: NextConfig = {
 };
 
 const withMDX = createMDX({
-  // Default MDX loader. Custom remark/rehype plugins can land here later
-  // if we want footnotes, code highlighting, etc.
+  options: { remarkPlugins: ["remark-gfm"] },
 });
 
 export default withMDX(nextConfig);

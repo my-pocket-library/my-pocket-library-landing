@@ -1,0 +1,119 @@
+My Pocket Library is a personal book library app for scanning ISBN barcodes, organizing books, tracking reading status, adding notes, managing shelf locations, sending direct messages to friends, and optionally sharing limited profile and book information with other readers.
+
+This policy explains what we collect, why, how long we keep it, and what you can ask us to do with it. If you are in the European Economic Area or the United Kingdom, it also serves as our notice under the General Data Protection Regulation (GDPR).
+
+## Who is responsible for your data
+
+Hasan Harman is the data controller for My Pocket Library. You can reach us about anything in this policy, including any of the rights described below, at:
+
+hasanharman33@gmail.com
+
+We respond to privacy requests within one month, as required by Article 12 of the GDPR.
+
+## What we collect, and why
+
+We only collect what the app needs to work. We do not run advertising, analytics, or tracking SDKs, and the app does not collect an advertising identifier.
+
+| What | Examples | Why we process it | Legal basis (GDPR Art. 6) |
+| --- | --- | --- | --- |
+| Account information | Email address, display name, username, Apple or Google authentication identifier | Creating your account and signing you in | Performance of a contract |
+| Library information | Book titles, authors, ISBNs, cover images, reading status, notes, shelf and location names, book format, borrow tracking, wishlist, reading activity dates | Saving and syncing your library across your devices | Performance of a contract |
+| Profile information | Profile photo, display name, username, badges | Showing you to friends you have connected with | Performance of a contract |
+| Friend and sharing data | Friend and book-borrow requests, friend records, activity likes, book club membership and invites, shared book loans (reader identities, public book details, request status, loan, due and return dates), the books you choose to make publicly visible | Operating friend, activity, profile, lending and book club features | Performance of a contract |
+| Direct messages | Message text, book cards you attach, reactions, timestamps, the time you last opened each conversation, and the participants of each conversation | Delivering messages between you and your friends, and showing each of you whether the other has read the conversation | Performance of a contract |
+| Push notification tokens | A per-device Firebase Cloud Messaging token | Sending you notifications you asked for | Consent, which you give in the iOS notification prompt and can withdraw in iOS Settings at any time |
+| Subscription status | Your Pro entitlement, purchase and renewal status, and an anonymous RevenueCat customer identifier tied to your account | Unlocking paid features and restoring purchases | Performance of a contract |
+| Moderation data | Readers you have blocked, and any abuse report you file — its reason, your note, and a snapshot of the reported messages | Acting on reports and keeping blocks in force | Our legitimate interest in a safe service, and compliance with our legal obligations |
+| Support requests and catalog feedback | Your account identifier, what the request is about, your note, and when you sent it. A request sent from the Support screen also carries your app and iOS version; a book report carries the ISBN, issue reason, and the current title or cover URL instead. We store our reply, whether we resolved or closed it, and when. | Answering your request, and investigating and correcting book metadata | Our legitimate interest in a reliable, functioning catalog and in answering the people who use it |
+| Technical and security data | Error information, security rule denials | Keeping the app working | Our legitimate interest in a secure, functioning app |
+
+Camera access is used only to scan ISBN barcodes and book spines. Scanning happens entirely on your device — camera images are never uploaded to us or to anyone else, and we never store them.
+
+We do not sell your personal information, we do not share it with advertisers, and we do not use it to build profiles or make automated decisions that have legal or similarly significant effects on you.
+
+## Direct messages
+
+Direct messages between you and your friends are stored on our Firebase servers. They are **not end-to-end encrypted**, which means that, technically, they are readable by our infrastructure. We want to be plain about what that does and does not mean:
+
+- **We do not read your messages.** Nobody at My Pocket Library browses, searches, mines, or analyses message content, and we never use it to train anything, target anything, or share it with a third party.
+- Our security rules make your messages unreadable to any other user of the app. Only the two participants in a conversation can load it.
+- The only automated processing of message content is the notification banner: when you receive a message, a server function reads the newest message solely to build the preview text sent to your device. All it writes back are two timestamps on that same message, recording that the message has already been counted into your unread badge and already announced, so that a repeated delivery cannot count it twice. Those marks are part of the message: they are deleted with it and included with it in your data export. Nothing is retained beyond the message itself.
+- We access message content **only** where we are legally compelled to, or where it is strictly necessary to investigate a specific report of abuse or a specific bug you have reported to us. Any such access is deliberate, exceptional, and limited to the conversation in question.
+- When you report a conversation, the report carries a copy of the reported reader's last twenty messages in it. That copy is what we act on, so investigating a report does not mean reading the rest of your conversation.
+- **Opening a conversation is visible to the friend you are talking to.** We store one timestamp per conversation recording when you last opened it, which is what marks your unread badge cleared and what shows the other participant "Seen" under their last message. It is a single time per conversation, not a record of each message you read, and only the two of you can see it. There is currently no way to turn it off; if that matters to you, it is worth knowing before you open a message.
+- Administrative access to our database is restricted to accounts that require it, protected by two-factor authentication.
+
+If you need a guarantee that no operator can technically read your messages, use a dedicated end-to-end encrypted messenger. We would rather say this clearly than imply a protection we do not provide.
+
+## Where your data is stored
+
+Your library, profile, friend data and messages are stored in Google Cloud Firestore in a **European multi-region** (Belgium and the Netherlands), and the server functions that send notifications run in Belgium. Your core app data therefore stays in the EU.
+
+Some of our providers process limited data outside the EEA, principally in the United States:
+
+- **Firebase Authentication** (Google) processes sign-in identifiers and email addresses.
+- **Firebase Cloud Messaging** (Google) processes device tokens and notification payloads.
+- **RevenueCat** processes subscription status and an account identifier.
+- **Google Sign-In** and **Sign in with Apple** process your sign-in when you choose them.
+
+Where personal data is transferred outside the EEA or the UK, it is covered by the European Commission's Standard Contractual Clauses under the data processing terms we have accepted with each provider.
+
+## Who else processes your data
+
+We use the following providers as data processors, each under their own data processing terms:
+
+- **Google (Firebase Authentication, Cloud Firestore, Cloud Messaging, Cloud Functions, Installations)** — authentication, data storage, notifications.
+- **Google Sign-In** — when you choose to sign in with Google.
+- **Apple** — Sign in with Apple, and App Store purchase processing.
+- **RevenueCat** — subscription entitlement management.
+
+We also query **Google Books** and **Open Library** to look up book metadata from ISBNs. These lookups send the ISBN or search term only. They do not carry your account identifier, your name, or anything else that identifies you.
+
+Payment card details are handled entirely by Apple. We never see or store them.
+
+## How long we keep your data
+
+- **Account, library and profile data** is kept for as long as your account exists.
+- **Direct messages** are kept until the conversation is deleted, which happens when either participant removes the friendship or deletes their account. Deleting a conversation from your own list is not the same thing: it hides that conversation from you, and the messages stay until one of you ends the friendship or deletes their account, because the other reader's copy is not yours to delete. A conversation you have hidden is still included in your data export.
+- **Your friend list is visible to your friends.** A reader you have accepted can see who else you have connected with, by name and profile picture, and can open those readers' profiles. Readers who are not your friends cannot see your friend list at all. Removing a friendship or blocking a reader takes each of you off the other's list.
+- **Activity likes** are kept until you remove the like, the friendship ends, either reader blocks the other, the activity is deleted, or either account is deleted. Friends see only the count and their own like state, not a list of everyone who liked an activity.
+- **Book-borrow requests** are visible only to the two readers and contain public book and identity snapshots, not private shelf locations, notes or reading progress. Pending requests become unavailable or are removed when the copy is hidden, deleted or lent, or when the friendship ends or either reader blocks the other. Resolved requests remain in the inbox while the friendship and exposed book remain, and are removed when either account is deleted.
+- **Shared book loans** remain visible to the lender and borrower after an unfriend or block so either person can record the physical book's return. Returned loans remain in both readers' histories until either account is deleted, at which point the shared record is removed.
+- **Push tokens** are kept until you disable notifications, sign out, or delete your account.
+- **Abuse reports** are kept for as long as we need them to act on the report and to recognise repeat behaviour, and no longer than two years.
+- **Support requests and catalog feedback** are kept until we have acted on them, and no longer than two years. They are removed when you delete your account, and you can ask us to delete any one of them.
+- **Deleted data** is removed from our live database immediately. Firestore retains a one-hour version history for disaster recovery, after which deleted data is unrecoverable.
+
+## Your rights
+
+Under the GDPR you have the right to:
+
+- **Access** the personal data we hold about you, and receive a copy of it.
+- **Rectify** data that is inaccurate or incomplete — most of it you can edit directly in the app.
+- **Erase** your data. You can delete your account in the app at any time, from Settings. This removes your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friend records, book club memberships, push tokens, username reservation and every conversation you are part of, and it deletes your sign-in.
+- **Restrict** or **object to** our processing where we rely on legitimate interests.
+- **Port** your data. Settings has an "Export my data" option that produces a JSON file containing your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friends, book clubs and conversations, which you can save or send anywhere you like.
+- **Withdraw consent** at any time where we rely on it, such as notifications, without affecting processing carried out before you withdrew it.
+- **Complain** to your local data protection supervisory authority. In the EU you can find yours at edpb.europa.eu; in the UK it is the Information Commissioner's Office at ico.org.uk.
+
+Account deletion and data export are both available in the app, under Settings. For access, rectification, restriction or objection requests, email us at the address above and we will respond within one month.
+
+One limitation we want to be transparent about: if you sent a book club invitation that the recipient has not yet answered, your display name may remain in their pending invitations after you delete your account, until that invitation is acted on. Email us and we will remove it.
+
+## Children
+
+My Pocket Library is not intended for children under 16, and we do not knowingly collect personal information from them. If you believe a child has provided us with personal data, contact us and we will delete it.
+
+## Security
+
+We protect your data with Firebase security rules that scope every document to the accounts entitled to read it, platform authentication, encryption in transit and encryption at rest as provided by Google Cloud, and restricted, two-factor-protected administrative access. No method of electronic storage or transmission is completely secure, and we will notify affected users and the relevant supervisory authority of a personal data breach where the GDPR requires it.
+
+## Changes
+
+We may update this Privacy Policy from time to time. Material changes will be reflected by changing the effective date above, and we will make a reasonable effort to tell you in the app when a change affects how we handle your data.
+
+## Contact
+
+Questions, requests, or anything else about this policy:
+
+hasanharman33@gmail.com

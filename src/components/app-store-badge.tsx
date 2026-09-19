@@ -32,7 +32,7 @@ export function AppStoreBadge({
       rel="noopener noreferrer"
       aria-label="Download My Pocket Library on the App Store"
       className={cn(
-        "group inline-flex h-12 items-center gap-2 rounded-xl bg-black px-4 text-white",
+        "group inline-flex h-12 shrink-0 whitespace-nowrap items-center gap-2 rounded-xl bg-black px-4 text-white",
         "shadow-[0_2px_30px_-2px_rgba(0,0,0,0.25)]",
         "transition-colors hover:bg-black/90",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:ring-offset-ana-1",

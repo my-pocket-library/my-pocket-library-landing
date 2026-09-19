@@ -39,13 +39,13 @@ export function FaqSection() {
     >
       <div className="mx-auto max-w-[760px] px-6">
         <div className="text-center">
-          <span className="inline-block rounded-full border border-black/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-black/70 backdrop-blur">
+          <span className="inline-block rounded-full border border-ink/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-ink/70 backdrop-blur">
             Frequently asked
           </span>
-          <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-black md:text-5xl">
+          <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-5xl">
             Questions, answered.
           </h2>
-          <p className="mx-auto mt-5 max-w-xl text-balance text-base text-black/70 md:text-lg">
+          <p className="mx-auto mt-5 max-w-xl text-balance text-base text-ink/70 md:text-lg">
             The stuff people ask us most — scanning, sync, pricing, and
             what happens to your data.
           </p>

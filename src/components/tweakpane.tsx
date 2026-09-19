@@ -226,7 +226,7 @@ export function Tweakpane() {
       ref={hostRef}
       // z-[2147483647] = the max safe int — guarantees the pane sits above
       // any ancestor stacking context introduced elsewhere on the page.
-      className="fixed right-4 top-4 z-[2147483647] w-72 [&_.tp-rotv]:!font-mono"
+      className="fixed hidden md:block right-4 top-4 z-[2147483647] w-72 [&_.tp-rotv]:!font-mono"
     />,
     document.body,
   );

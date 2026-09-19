@@ -1,3 +1,4 @@
+import Image from "next/image";
 import SupportContent from "@/content/support.mdx";
 
 /**
@@ -13,10 +14,11 @@ export function SupportSection() {
     >
       <div className="mx-auto max-w-[760px] px-6">
         <div className="text-center">
-          <span className="inline-block rounded-full border border-black/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-black/70 backdrop-blur">
+          <Image src="/brand/messages.svg" alt="" width={144} height={144} className="mx-auto mb-2" />
+          <span className="inline-block rounded-full border border-ink/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-ink/70 backdrop-blur">
             Support
           </span>
-          <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-black md:text-5xl">
+          <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-5xl">
             We&rsquo;re here to help.
           </h2>
         </div>

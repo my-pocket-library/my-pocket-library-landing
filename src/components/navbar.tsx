@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { type MouseEvent, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -75,22 +76,22 @@ export function Navbar() {
         hidden ? "-translate-y-full" : "translate-y-0",
       )}
     >
-      <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-6 md:px-10">
-        <div className="flex items-center gap-10">
+      <div className="mx-auto flex min-h-20 max-w-[1400px] items-center justify-between px-6 md:px-10">
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 md:justify-start md:gap-10">
           <Link
             href="/"
             onClick={handleHomeClick}
-            className="font-serif text-xl tracking-tight text-black"
+            className="inline-flex items-center gap-3 font-serif text-xl tracking-tight text-ink"
           >
-            <span className="italic">My</span>{" "}
-            <span className="font-medium">Pocket Library</span>
+            <Image src="/brand/app-icon.png" alt="" width={40} height={40} className="rounded-xl" />
+            <span><span className="italic">My</span>{" "}Pocket Library</span>
           </Link>
-          <nav className="hidden items-center gap-7 md:flex">
+          <nav className="flex items-center gap-4 md:gap-7">
             {navLinks.map((link) => (
               <a
                 key={link.label}
-                href={link.href}
-                className="text-sm text-black/70 transition-colors hover:text-black"
+                href={pathname === "/" ? link.href : `/${link.href}`}
+                className="inline-flex min-h-11 items-center text-sm text-ink/70 transition-colors hover:text-ink"
               >
                 {link.label}
               </a>

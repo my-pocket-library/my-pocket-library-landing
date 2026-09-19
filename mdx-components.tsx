@@ -14,11 +14,16 @@ import type { MDXComponents } from "mdx/types";
  */
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
+    table: ({ children, ...props }) => (
+      <div role="region" aria-label="Personal data and processing purposes" tabIndex={0} className="my-6 overflow-x-auto rounded-xl border border-ink/15">
+        <table className="w-full min-w-[640px] border-collapse text-left text-sm leading-relaxed [&_th]:bg-ink/5 [&_th]:font-semibold [&_th]:p-4 [&_td]:p-4 [&_td]:align-top [&_tr]:border-b [&_tr]:border-ink/10" {...props}>{children}</table>
+      </div>
+    ),
     // Headings inside MDX content. Light defaults — page-level type comes
     // from each section's own header above the MDX block.
     h2: ({ children, ...props }) => (
       <h2
-        className="mt-10 font-serif text-2xl font-medium tracking-[-0.01em] text-black"
+        className="mt-10 font-serif text-2xl font-medium tracking-[-0.01em] text-ink"
         {...props}
       >
         {children}
@@ -26,7 +31,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     h3: ({ children, ...props }) => (
       <h3
-        className="mt-6 text-lg font-semibold text-black"
+        className="mt-6 text-lg font-semibold text-ink"
         {...props}
       >
         {children}
@@ -34,7 +39,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     p: ({ children, ...props }) => (
       <p
-        className="mt-4 text-base leading-relaxed text-black/70"
+        className="mt-4 text-base leading-relaxed text-ink/70"
         {...props}
       >
         {children}
@@ -42,7 +47,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     a: ({ children, ...props }) => (
       <a
-        className="text-black underline decoration-black/30 underline-offset-4 transition-colors hover:decoration-black"
+        className="wrap-anywhere text-ink underline decoration-black/30 underline-offset-4 transition-colors hover:decoration-black"
         {...props}
       >
         {children}
@@ -50,7 +55,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     ul: ({ children, ...props }) => (
       <ul
-        className="mt-4 list-disc space-y-2 pl-5 text-base leading-relaxed text-black/70 marker:text-black/40"
+        className="mt-4 list-disc space-y-2 pl-5 text-base leading-relaxed text-ink/70 marker:text-ink/40"
         {...props}
       >
         {children}
@@ -58,14 +63,14 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     ol: ({ children, ...props }) => (
       <ol
-        className="mt-4 list-decimal space-y-2 pl-5 text-base leading-relaxed text-black/70 marker:text-black/40"
+        className="mt-4 list-decimal space-y-2 pl-5 text-base leading-relaxed text-ink/70 marker:text-ink/40"
         {...props}
       >
         {children}
       </ol>
     ),
     strong: ({ children, ...props }) => (
-      <strong className="font-semibold text-black" {...props}>
+      <strong className="font-semibold text-ink" {...props}>
         {children}
       </strong>
     ),

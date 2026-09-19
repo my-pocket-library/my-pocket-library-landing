@@ -5,6 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-ink: #0e2472;
+  --color-coral: #ee4c2c;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-ana-1: var(--ana-1);
@@ -56,7 +58,7 @@
 
 :root {
   /* Ana palette — warm cream/peach */
-  --ana-1: oklch(95% 0.013 77.9);
+  --ana-1: #fdfaf4;
   --ana-2: oklch(65.4% 0.089 57.9);
   --ana-3: oklch(75.4% 0.089 67.9);
   --ana-4: oklch(89.4% 0.027 85.9);
@@ -139,6 +141,7 @@
     @apply bg-background text-foreground;
   }
   html {
+    scroll-padding-top: 7rem;
     @apply font-sans;
   }
 }

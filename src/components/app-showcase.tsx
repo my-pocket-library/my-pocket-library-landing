@@ -2,28 +2,25 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import Core from "smooothy";
 import { cn } from "@/lib/utils";
 
 const SCREENS = [
   {
     src: "/images/pckt1.png",
-    alt: "Pocket Library — your shelf, scanned and organised at a glance.",
+    alt: "Pocket Library welcome screen with a reading illustration and quote.",
   },
   {
     src: "/images/pkt2.png",
-    alt: "Book details — status, reading progress, and notes for every title.",
+    alt: "Your library — book covers, reading filters, and collection search.",
   },
   {
     src: "/images/pkt3.png",
-    alt: "Library overview — search and sort across your entire collection.",
+    alt: "Book details — reading status, progress, and profile visibility.",
   },
 ];
 
 export function AppShowcase() {
   const sectionRef = useRef<HTMLElement>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<Core | null>(null);
   const [revealed, setRevealed] = useState(false);
 
   // Fire the blur+opacity reveal once the section first crosses into view.
@@ -46,34 +43,6 @@ export function AppShowcase() {
     return () => io.disconnect();
   }, []);
 
-  // Smooothy drives drag/snap/momentum. Items are the host's direct children;
-  // smooothy mutates `transform` on each one. Our reveal animation lives on
-  // an INNER wrapper (one level deeper) so its transition-on-transform
-  // doesn't fight smooothy's per-frame transform writes.
-  useEffect(() => {
-    if (!hostRef.current) return;
-    const inst = new Core(hostRef.current, {
-      infinite: false,
-      snap: true,
-      lerpFactor: 0.22,
-      dragSensitivity: 0.012,
-      speedDecay: 0.9,
-      scrollInput: false,
-    });
-    sliderRef.current = inst;
-    let raf = 0;
-    const tick = () => {
-      inst.update();
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      inst.destroy();
-      sliderRef.current = null;
-    };
-  }, []);
-
   return (
     <section
       ref={sectionRef}
@@ -81,29 +50,24 @@ export function AppShowcase() {
       className="relative isolate overflow-hidden bg-ana-1 py-24 md:py-32"
     >
       <div className="mx-auto max-w-[1100px] px-6 text-center">
-        <span className="inline-block rounded-full border border-black/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-black/70 backdrop-blur">
+        <Image src="/brand/first-book.svg" alt="" width={144} height={144} className="mx-auto mb-2" />
+        <span className="inline-block rounded-full border border-ink/10 bg-white/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-ink/70 backdrop-blur">
           On your phone
         </span>
-        <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-black md:text-5xl">
+        <h2 className="mt-5 font-serif text-balance text-4xl font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-5xl">
           Built for browsing.
         </h2>
-        <p className="mx-auto mt-5 max-w-xl text-balance text-base text-black/70 md:text-lg">
+        <p className="mx-auto mt-5 max-w-xl text-balance text-base text-ink/70 md:text-lg">
           A library that fits in your pocket — scan, sort your shelves, and
           rediscover what&rsquo;s waiting.
         </p>
       </div>
 
       <div
-        ref={hostRef}
         aria-label="App screenshots"
-        className="relative mt-12 flex cursor-grab select-none touch-pan-y overflow-hidden active:cursor-grabbing md:mt-16"
-        // Centre-align: pad each side by half the (viewport − item-width)
-        // so item 0 starts in the middle of the viewport. Smooothy snaps
-        // by translating all items by `current × itemWidth`, so the same
-        // padding keeps every snapped slide centred — at slide 1 the
-        // second item lands at the centre, at slide 2 the third, etc.
-        // 130px = half the desktop item width (260), 36vw = half the
-        // mobile item width (72vw).
+        tabIndex={0}
+        role="region"
+        className="relative mt-12 flex snap-x snap-mandatory gap-5 overflow-x-auto overscroll-x-contain pb-4 md:mt-16 lg:justify-center lg:gap-7 lg:!px-6"
         style={{
           paddingLeft: "calc(50% - min(130px, 36vw))",
           paddingRight: "calc(50% - min(130px, 36vw))",
@@ -112,12 +76,12 @@ export function AppShowcase() {
         {SCREENS.map((screen, i) => (
           <div
             key={i}
-            className="flex-shrink-0 pr-5 md:pr-7"
+            className="shrink-0 snap-center"
             style={{ width: "min(260px, 72vw)" }}
           >
             <div
               className={cn(
-                "relative aspect-[1242/2688] overflow-hidden rounded-[34px] border border-black/10 bg-white",
+                "relative aspect-[1242/2688] overflow-hidden rounded-[34px] border border-ink/10 bg-white",
                 "will-change-[transform,opacity,filter]",
                 "transition-[opacity,filter,transform] duration-[1100ms] ease-out",
                 revealed
