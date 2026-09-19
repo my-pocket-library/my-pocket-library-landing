@@ -31,6 +31,10 @@ Camera access is used only to scan ISBN barcodes and book spines. Scanning happe
 
 We do not sell your personal information, we do not share it with advertisers, and we do not use it to build profiles or make automated decisions that have legal or similarly significant effects on you.
 
+## Activity sharing
+
+Activity updates (books added, started and finished) are public by default, including for existing accounts: anyone signed in to Pocket Library can see them. Choose Friends only in Settings → Privacy → Activity sharing, or from the Activity feed, to restrict existing and future updates to your accepted friends. Your choice syncs across devices. Blocking in either direction prevents access to activities. Books already hidden from your profile do not generate new activity updates. Likes and borrow requests remain friend-only; readers who can see an activity can see its like count, but not a list of who liked it.
+
 ## Direct messages
 
 Direct messages between you and your friends are stored on our Firebase servers. They are **not end-to-end encrypted**, which means that, technically, they are readable by our infrastructure. We want to be plain about what that does and does not mean:
@@ -76,7 +80,7 @@ Payment card details are handled entirely by Apple. We never see or store them.
 - **Account, library and profile data** is kept for as long as your account exists.
 - **Direct messages** are kept until the conversation is deleted, which happens when either participant removes the friendship or deletes their account. Deleting a conversation from your own list is not the same thing: it hides that conversation from you, and the messages stay until one of you ends the friendship or deletes their account, because the other reader's copy is not yours to delete. A conversation you have hidden is still included in your data export.
 - **Your friend list is visible to your friends.** A reader you have accepted can see who else you have connected with, by name and profile picture, and can open those readers' profiles. Readers who are not your friends cannot see your friend list at all. Removing a friendship or blocking a reader takes each of you off the other's list.
-- **Activity likes** are kept until you remove the like, the friendship ends, either reader blocks the other, the activity is deleted, or either account is deleted. Friends see only the count and their own like state, not a list of everyone who liked an activity.
+- **Activity likes** are kept until you remove the like, the friendship ends, either reader blocks the other, the activity is deleted, or either account is deleted. Readers who can see the activity see its like count; only friends can like it and read their own like state. No list of likers is exposed.
 - **Book-borrow requests** are visible only to the two readers and contain public book and identity snapshots, not private shelf locations, notes or reading progress. Pending requests become unavailable or are removed when the copy is hidden, deleted or lent, or when the friendship ends or either reader blocks the other. Resolved requests remain in the inbox while the friendship and exposed book remain, and are removed when either account is deleted.
 - **Shared book loans** remain visible to the lender and borrower after an unfriend or block so either person can record the physical book's return. Returned loans remain in both readers' histories until either account is deleted, at which point the shared record is removed.
 - **Push tokens** are kept until you disable notifications, sign out, or delete your account.
