@@ -13,7 +13,6 @@ import * as THREE from "three";
 import { Book, type BookCover, loadCoverImage } from "./book";
 import { Phone } from "./phone";
 import { PARAMS } from "@/lib/scene-params";
-import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 
 // 9 real, image-backed books. The COVERS array below repeats this list
@@ -129,6 +128,11 @@ const MAX_FRAME_DELTA = 0.1;
 // fill in as images arrive).
 const COVER_WAIT_MS = 1500;
 
+// Length of the fade over the poster (matches the wrapper's duration-700).
+// The scene holds its opening frame until the fade is done, so it lines up
+// with the poster the whole way through.
+const FADE_MS = 700;
+
 // ---------------------------------------------------------------------------
 // Books — auto-rotating circular carousel.
 // Drag/click selection is gone; the carousel just turns at PARAMS.autoCarousel
@@ -139,9 +143,9 @@ const COVER_WAIT_MS = 1500;
 
 type BooksProps = {
   sliderRef: RefObject<Core | null>;
-  /** False when the visitor prefers reduced motion: the carousel holds
-   *  still instead of auto-rotating. */
-  animate: boolean;
+  /** False holds the opening frame — no auto-rotation, no idle wobble —
+   *  which is exactly what the hero poster shows. */
+  playing: boolean;
   /** Integer index of the current 'front-facing' book. Written every frame
    *  by Books's useFrame; the Phone reads it inside its own useFrame so the
    *  texture swap happens in the same frame as the position update (no
@@ -174,7 +178,7 @@ function wrapToPi(a: number): number {
 
 function Books({
   sliderRef,
-  animate,
+  playing,
   centeredIndexRef,
   transitionRef,
 }: BooksProps) {
@@ -191,6 +195,9 @@ function Books({
   // Accumulator that drives the integer slider.target step. Every full
   // unit of accumulator => one slider.target -= 1 nudge => one book advance.
   const autoStepAccumRef = useRef(0);
+  // Clock for the idle wobble, started when playing begins so the first
+  // playing frame continues smoothly from the held opening frame (t = 0).
+  const playStartRef = useRef<number | null>(null);
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, MAX_FRAME_DELTA);
@@ -220,7 +227,7 @@ function Books({
     // Auto-rotate: accumulate at PARAMS.autoCarouselSpeed books-per-second
     // and trigger one integer step on `target` for each full unit. smooothy
     // lerps `current` toward `target` so the steps feel continuous.
-    if (animate && PARAMS.autoCarousel && !slider.paused) {
+    if (playing && PARAMS.autoCarousel && !slider.paused) {
       autoStepAccumRef.current += delta * PARAMS.autoCarouselSpeed;
       while (autoStepAccumRef.current >= 1) {
         autoStepAccumRef.current -= 1;
@@ -248,7 +255,13 @@ function Books({
     const angleStep = (Math.PI * 2) / count;
     const R = PARAMS.circleRadius;
     const offsetAngle = slider.current * angleStep;
-    const t = animate ? performance.now() / 1000 : 0;
+    if (playing && playStartRef.current === null) {
+      playStartRef.current = performance.now();
+    }
+    const t =
+      playStartRef.current === null
+        ? 0
+        : (performance.now() - playStartRef.current) / 1000;
 
     // Front-arc opacity band, in radians. Front FULL_BOOKS = full alpha,
     // FADE_WIDTH_BOOKS = linear fade band on either side, everything past
@@ -404,11 +417,16 @@ function FirstFrame({ onFrame }: { onFrame: () => void }) {
   return null;
 }
 
-export function BookScene() {
+type BookSceneProps = {
+  /** Called with true once the scene is drawn and fading in over the
+   *  poster, and with false if it stops being visible (WebGL context lost). */
+  onLiveChange?: (live: boolean) => void;
+};
+
+export function BookScene({ onLiveChange }: BookSceneProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<Core | null>(null);
-  const reducedMotion = useReducedMotion();
 
   // Refs read by Phone every frame so the texture swap + slide stay in
   // perfect lockstep with the carousel (no React-state-vs-useFrame race).
@@ -421,6 +439,9 @@ export function BookScene() {
   // Fade-in gate: first frame drawn + cover images in (or timed out).
   const [firstFrame, setFirstFrame] = useState(false);
   const [coversReady, setCoversReady] = useState(false);
+  const [contextLost, setContextLost] = useState(false);
+  // True once the fade over the poster has finished; motion starts then.
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -464,7 +485,14 @@ export function BookScene() {
     };
   }, []);
 
-  const ready = firstFrame && coversReady;
+  const ready = firstFrame && coversReady && !contextLost;
+
+  useEffect(() => {
+    onLiveChange?.(ready);
+    if (!ready) return;
+    const timer = setTimeout(() => setPlaying(true), FADE_MS);
+    return () => clearTimeout(timer);
+  }, [ready, onLiveChange]);
 
   return (
     <div
@@ -498,10 +526,21 @@ export function BookScene() {
           position: [PARAMS.camX, PARAMS.camY, PARAMS.camZ],
           fov: PARAMS.fov,
         }}
+        // Transparent: the hero's icon pattern shows through instead of
+        // stopping in a hard line at the canvas edge.
         gl={{ antialias: true, alpha: true }}
+        onCreated={({ gl }) => {
+          // three.js restores a lost context by itself; meanwhile the
+          // poster covers for the blank canvas.
+          gl.domElement.addEventListener("webglcontextlost", () =>
+            setContextLost(true),
+          );
+          gl.domElement.addEventListener("webglcontextrestored", () =>
+            setContextLost(false),
+          );
+        }}
         className="!absolute inset-0"
       >
-        <color attach="background" args={["#fdfaf4"]} />
         <LiveFog />
         <CameraRig />
         <LiveLights />
@@ -510,13 +549,13 @@ export function BookScene() {
         <Suspense fallback={null}>
           <Books
             sliderRef={sliderRef}
-            animate={!reducedMotion}
+            playing={playing}
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}
           />
           <Phone
             covers={COVERS}
-            animate={!reducedMotion}
+            parallax={playing}
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}
           />

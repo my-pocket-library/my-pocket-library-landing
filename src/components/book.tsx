@@ -480,6 +480,17 @@ function getPageTextures() {
   return pageTextures;
 }
 
+// Depth pre-pass for fading books. A book mid-fade is transparent, and a
+// transparent book shows its own insides (page block, back board) through
+// its cover, so it reads as glass. Drawing the book's depth first, with no
+// colour, lets only its outermost surfaces through the depth test — it
+// fades as one solid object. The pre-pass meshes draw in the transparent
+// pass (renderOrder 0) just before the fading books themselves (1).
+const DEPTH_PREPASS = new THREE.MeshBasicMaterial({
+  colorWrite: false,
+  transparent: true,
+});
+
 function applyOpacity(material: THREE.Material, opacity: number) {
   const transparent = opacity < 0.999;
   if (material.transparent !== transparent) {
@@ -661,6 +672,7 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
   const backBoardRef = useRef<THREE.Mesh>(null);
   const spineRef = useRef<THREE.Mesh>(null);
   const paperMeshRef = useRef<THREE.Mesh>(null);
+  const prepassRefs = useRef<(THREE.Mesh | null)[]>([]);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
 
   // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
@@ -866,13 +878,23 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
       PARAMS.bookPagesScaleZ,
     );
 
-    // Apply per-book fade opacity to every material across all four meshes.
+    // Apply per-book fade opacity to every material across all four meshes,
+    // and run the depth pre-pass while the book is mid-fade.
     const op = opacitiesRef?.current?.[index] ?? 1;
-    for (const mesh of [frontBoard, backBoard, spineMesh, paperMesh]) {
+    const fading = op < 0.999;
+    const meshes = [frontBoard, backBoard, spineMesh, paperMesh];
+    meshes.forEach((mesh, i) => {
       for (const material of mesh.material as THREE.Material[]) {
         applyOpacity(material, op);
       }
-    }
+      const prepass = prepassRefs.current[i];
+      if (!prepass) return;
+      prepass.visible = fading && mesh.visible;
+      if (!prepass.visible) return;
+      prepass.geometry = mesh.geometry;
+      prepass.position.copy(mesh.position);
+      prepass.scale.copy(mesh.scale);
+    });
   });
 
   // R3F only disposes the placeholder <boxGeometry> children it created; the
@@ -892,21 +914,35 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
   }, []);
 
   // Initial placeholder geometries — useFrame replaces them with the proper
-  // bookLayout()-sized RoundedBoxGeometries on first tick.
+  // bookLayout()-sized RoundedBoxGeometries on first tick. The four
+  // pre-pass meshes borrow those geometries (dispose={null}: the book
+  // meshes own them).
   return (
     <group>
-      <mesh ref={frontBoardRef} material={standardMaterials.frontBoard}>
+      <mesh ref={frontBoardRef} material={standardMaterials.frontBoard} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh ref={backBoardRef} material={standardMaterials.backBoard}>
+      <mesh ref={backBoardRef} material={standardMaterials.backBoard} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh ref={spineRef} material={standardMaterials.spine}>
+      <mesh ref={spineRef} material={standardMaterials.spine} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh ref={paperMeshRef} material={standardMaterials.paper}>
+      <mesh ref={paperMeshRef} material={standardMaterials.paper} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
+      {[0, 1, 2, 3].map((i) => (
+        <mesh
+          key={i}
+          ref={(el: THREE.Mesh | null) => {
+            prepassRefs.current[i] = el;
+          }}
+          material={DEPTH_PREPASS}
+          renderOrder={0}
+          visible={false}
+          dispose={null}
+        />
+      ))}
     </group>
   );
 }
