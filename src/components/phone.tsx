@@ -1,10 +1,11 @@
 "use client";
 
 import { PerspectiveCamera, RenderTexture } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { type BookCover, loadCoverImage, paintCover } from "./book";
+import { requestFrame } from "@/lib/scene-frame";
 import { PARAMS } from "@/lib/scene-params";
 
 // ============================================================================
@@ -392,25 +393,30 @@ export function Phone({
   // Current lerped rotation contribution from the mouse — added on top of
   // PARAMS.phoneRot* each frame.
   const mouseRotRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const handler = (e: MouseEvent) => {
       const halfW = window.innerWidth / 2;
       const halfH = window.innerHeight / 2;
       if (halfW <= 0 || halfH <= 0) return;
       mouseRef.current.x = (e.clientX - halfW) / halfW;
       mouseRef.current.y = (e.clientY - halfH) / halfH;
+      // Frames are drawn on demand: wake the loop to ease towards the cursor.
+      invalidate();
     };
     window.addEventListener("mousemove", handler, { passive: true });
     return () => window.removeEventListener("mousemove", handler);
-  }, []);
+  }, [invalidate]);
 
   // Live transform driven by PARAMS so the tweakpane can move/scale the
   // phone without re-renders.
-  useFrame((_, delta) => {
+  useFrame((state, rawDelta) => {
     const g = rootRef.current;
     if (!g) return;
+    // The first frame after an idle stretch reports the whole pause as its
+    // delta; cap it so the tilt eases instead of jumping.
+    const delta = Math.min(rawDelta, 1 / 30);
     g.visible = PARAMS.phoneEnabled;
     if (!g.visible) return;
     g.position.set(PARAMS.phoneX, PARAMS.phoneY, PARAMS.phoneZ);
@@ -436,6 +442,10 @@ export function Phone({
     const m = mouseRotRef.current;
     m.x = THREE.MathUtils.damp(m.x, targetPitch, rate, delta);
     m.y = THREE.MathUtils.damp(m.y, targetYaw, rate, delta);
+    // Keep drawing until the tilt has caught up with the cursor.
+    if (Math.abs(m.x - targetPitch) > 1e-4 || Math.abs(m.y - targetYaw) > 1e-4) {
+      state.invalidate();
+    }
 
     g.rotation.set(
       PARAMS.phoneRotX + mouseRotRef.current.x,
@@ -447,12 +457,13 @@ export function Phone({
 
   return (
     <group ref={rootRef}>
-      {/* Phone body */}
+      {/* Phone body — dark graphite metal; the studio environment gives
+       *  its rounded edges soft highlights. */}
       <mesh geometry={phoneGeom}>
         <meshStandardMaterial
-          color="#17171b"
-          roughness={0.32}
-          metalness={0.72}
+          color="#202026"
+          roughness={0.3}
+          metalness={0.9}
         />
       </mesh>
 
@@ -461,25 +472,25 @@ export function Phone({
       <mesh position={[-PHONE_W / 2, PHONE_H * 0.22, 0]}>
         <boxGeometry args={[BTN_W, BTN_VOL_H, BTN_D]} />
         <meshStandardMaterial
-          color="#26262a"
-          roughness={0.45}
-          metalness={0.6}
+          color="#2a2a30"
+          roughness={0.35}
+          metalness={0.9}
         />
       </mesh>
       <mesh position={[-PHONE_W / 2, PHONE_H * 0.06, 0]}>
         <boxGeometry args={[BTN_W, BTN_VOL_DOWN_H, BTN_D]} />
         <meshStandardMaterial
-          color="#26262a"
-          roughness={0.45}
-          metalness={0.6}
+          color="#2a2a30"
+          roughness={0.35}
+          metalness={0.9}
         />
       </mesh>
       <mesh position={[PHONE_W / 2, PHONE_H * 0.12, 0]}>
         <boxGeometry args={[BTN_W, BTN_PWR_H, BTN_D]} />
         <meshStandardMaterial
-          color="#26262a"
-          roughness={0.45}
-          metalness={0.6}
+          color="#2a2a30"
+          roughness={0.35}
+          metalness={0.9}
         />
       </mesh>
 
@@ -516,6 +527,22 @@ export function Phone({
             />
           </RenderTexture>
         </meshBasicMaterial>
+      </mesh>
+
+      {/* Cover glass — a faint reflection of the studio environment added
+       *  over the screen. It shifts as the phone tilts, which sells the
+       *  glass; black diffuse + additive blending means only the
+       *  reflection shows. */}
+      <mesh geometry={screenGeom} position={[0, 0, SCREEN_FORWARD + 0.002]}>
+        <meshStandardMaterial
+          color="#000000"
+          roughness={0.15}
+          metalness={0}
+          transparent
+          opacity={0.35}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
       </mesh>
 
       {/* Dynamic Island — small black rounded pill above the screen content,
@@ -612,6 +639,7 @@ function BookContent({
             const r = coverRect(c.width, c.height);
             c.getContext("2d")?.drawImage(img, r.x, r.y, r.w, r.h);
             t.needsUpdate = true;
+            requestFrame();
           },
           () => {
             // Keep the flat placeholder.

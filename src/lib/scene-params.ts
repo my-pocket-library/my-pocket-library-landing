@@ -5,14 +5,9 @@
 
 export type SceneParams = {
   // Carousel motion
-  lerpFactor: number;
-  dragSensitivity: number;
-  scrollSensitivity: number;
-  speedDecay: number;
-  snap: boolean;
-  scrollInput: boolean;
-  autoCarousel: boolean; // continuous auto-rotation when idle
-  autoCarouselSpeed: number; // items advanced per second
+  lerpFactor: number; // ease time constant per book step, in seconds
+  autoCarousel: boolean; // auto-advance one book at a time
+  autoCarouselSpeed: number; // books advanced per second
 
   // Books
   bookWidth: number;
@@ -42,6 +37,8 @@ export type SceneParams = {
   fogFar: number;
 
   // Lights
+  envIntensity: number; // studio environment (reflections + soft fill)
+  shadowOpacity: number; // contact shadow under each book
   ambient: number;
   keyIntensity: number;
   keyX: number;
@@ -83,11 +80,6 @@ export type SceneParams = {
 
 export const PARAMS: SceneParams = {
   lerpFactor: 0.3,
-  dragSensitivity: 0.02,
-  scrollSensitivity: 3.3,
-  speedDecay: 0.9,
-  snap: false,
-  scrollInput: false,
   autoCarousel: true,
   autoCarouselSpeed: 0.3,
 
@@ -110,12 +102,16 @@ export const PARAMS: SceneParams = {
   fogNear: 13.5,
   fogFar: 22,
 
-  ambient: 2.5,
-  keyIntensity: 5.0,
+  // The studio environment supplies most of the light now; the direct
+  // lights only add a little shape.
+  envIntensity: 0.8,
+  shadowOpacity: 0.28,
+  ambient: 0.2,
+  keyIntensity: 2.0,
   keyX: -3.5,
   keyY: 12.0,
   keyZ: 10.0,
-  fillIntensity: 1.65,
+  fillIntensity: 0.3,
   rimIntensity: 0,
 
   phoneEnabled: true,
