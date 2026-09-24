@@ -1,8 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { AppStoreBadge } from "@/components/app-store-badge";
-import { BookScene } from "@/components/book-scene";
-import { Tweakpane } from "@/components/tweakpane";
+
+// three.js + R3F are ~290 KB gzipped. Loading the scene as its own chunk
+// keeps it out of the initial bundle, so the page is interactive first.
+// The box below keeps its height meanwhile (no layout shift) and the scene
+// fades in once it has drawn (see BookScene).
+const BookScene = dynamic(
+  () => import("@/components/book-scene").then((m) => m.BookScene),
+  { ssr: false },
+);
+
+// Dev-only live controls for the scene; never part of a production build.
+const Tweakpane = dynamic(
+  () => import("@/components/tweakpane").then((m) => m.Tweakpane),
+  { ssr: false },
+);
 
 export function Hero() {
   return (
@@ -13,7 +27,7 @@ export function Hero() {
         <BookScene />
       </div>
 
-      <div className="pointer-events-none relative z-10 mx-auto flex max-w-[1100px] flex-col items-center w-full px-6 pt-36 text-center">
+      <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center px-6 pt-28 text-center md:pt-36">
         <h1 className="font-serif text-balance text-[clamp(2.5rem,10vw,3rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-7xl">
           Your library. <span className="italic">In your pocket.</span>
         </h1>
@@ -23,11 +37,11 @@ export function Hero() {
           waiting next.
         </p>
 
-        <div className="pointer-events-auto mt-8 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
+        <div className="mt-8 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row sm:items-start">
           <AppStoreBadge />
           <a
             href="#app"
-            className="inline-flex h-12 items-center justify-center rounded-full px-6 text-[15px] text-ink hover:bg-black/5 hover:text-ink"
+            className="inline-flex h-12 items-center justify-center rounded-full px-6 text-[15px] text-ink transition-colors hover:bg-ink/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
           >
             See how it works
           </a>

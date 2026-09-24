@@ -13,22 +13,24 @@ export type BookCover = {
   accent: string;
   ink: string;
   pattern: "ornate" | "swirl" | "plain" | "stripe" | "emblem" | "stars";
-  /** Optional URL to a real cover image. When set, the procedural cover
-   *  is still painted first (acts as a synchronous fallback while the
-   *  image loads), and the image is then drawn on top, asynchronously,
-   *  with `texture.needsUpdate = true` to refresh the GPU upload. */
+  /** Optional URL to a real cover image. When set, a flat baseColor fill
+   *  stands in while the image loads, and the image is then drawn over it,
+   *  asynchronously, with `texture.needsUpdate = true` to refresh the GPU
+   *  upload. Without one, the procedural cover artwork is painted. */
   image?: string;
 };
 
 export type BookProps = {
   cover: BookCover;
-  /** Stable book index — drives per-book wear and color variation. */
+  /** Stable book index — drives per-book wear and color variation, and
+   *  picks this book's entry in `opacitiesRef`. */
   index?: number;
-  /** Per-book opacity in [0, 1], written by the parent scene each frame.
-   *  Used to fade books in/out as they rotate through the carousel so only
-   *  the front N are visible. Read inside this component's useFrame so the
-   *  fade stays in lockstep with position updates (no React-state lag). */
-  opacityRef?: RefObject<number>;
+  /** Per-book opacities in [0, 1], indexed like the carousel's COVERS and
+   *  written by the parent scene each frame. Used to fade books in/out as
+   *  they rotate through the carousel so only the front N are visible.
+   *  Read inside this component's useFrame so the fade stays in lockstep
+   *  with position updates (no React-state lag). */
+  opacitiesRef?: RefObject<number[]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -364,6 +366,130 @@ function paintPages(canvas: HTMLCanvasElement) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared textures
+//
+// The carousel lists every book twice (the duplicates are the same cover
+// objects) and every book uses the same page-edge texture, so textures are
+// built once per cover and shared by all meshes that show it. Materials stay
+// per instance, because each book fades in and out independently.
+// ---------------------------------------------------------------------------
+
+const imageCache = new Map<string, Promise<HTMLImageElement>>();
+
+/** Load and decode a cover image once; the books and the phone share it. */
+export function loadCoverImage(src: string): Promise<HTMLImageElement> {
+  let image = imageCache.get(src);
+  if (!image) {
+    image = new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.decoding = "async";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Could not load ${src}`));
+      img.src = src;
+    });
+    imageCache.set(src, image);
+  }
+  return image;
+}
+
+function canvasTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+type CoverTextures = { cover: THREE.CanvasTexture; spine: THREE.CanvasTexture };
+
+const coverTextureCache = new WeakMap<BookCover, CoverTextures>();
+
+function getCoverTextures(cover: BookCover, wear: number): CoverTextures {
+  const cached = coverTextureCache.get(cover);
+  if (cached) return cached;
+
+  // Cover — the real cover image when there is one, over a flat baseColor
+  // fill while it loads; otherwise (or if it fails) the procedural artwork.
+  const coverCanvas = document.createElement("canvas");
+  coverCanvas.width = 512;
+  coverCanvas.height = 768;
+  const coverTex = canvasTexture(coverCanvas);
+  if (cover.image) {
+    const ctx = coverCanvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = cover.baseColor;
+      ctx.fillRect(0, 0, coverCanvas.width, coverCanvas.height);
+    }
+    loadCoverImage(cover.image).then(
+      (img) => {
+        ctx?.drawImage(img, 0, 0, coverCanvas.width, coverCanvas.height);
+        coverTex.needsUpdate = true;
+      },
+      () => {
+        paintCover(coverCanvas, cover, wear);
+        coverTex.needsUpdate = true;
+      },
+    );
+  } else {
+    paintCover(coverCanvas, cover, wear);
+  }
+
+  // Spine texture — flat baseColor + vertical title in the same serif
+  // stack the page's HTML headings use. We still hook
+  // `document.fonts.ready` and re-paint once fonts settle, in case a
+  // future custom serif is added to the loader — system serifs
+  // (Georgia / ui-serif) are present on first paint so this is a
+  // free safety net.
+  const spineCanvas = document.createElement("canvas");
+  spineCanvas.width = 128;
+  spineCanvas.height = 768;
+  paintSpine(spineCanvas, cover);
+  const spineTex = canvasTexture(spineCanvas);
+  document.fonts?.ready.then(() => {
+    paintSpine(spineCanvas, cover);
+    spineTex.needsUpdate = true;
+  });
+
+  const textures = { cover: coverTex, spine: spineTex };
+  coverTextureCache.set(cover, textures);
+  return textures;
+}
+
+let pageTextures: { pages: THREE.CanvasTexture; edge: THREE.CanvasTexture } | null =
+  null;
+
+/**
+ * Pages texture — horizontal stripes representing dense page edges.
+ * Painted ONCE, with TWO textures over the same canvas: the upright one for
+ * the top/bottom faces (where horizontal stripes read as page edges running
+ * spine→open-edge), and a rotated copy for the open-edge face (where stripes
+ * need to appear VERTICAL because each page is a vertical sheet, so its
+ * visible edge is vertical too).
+ */
+function getPageTextures() {
+  if (!pageTextures) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    paintPages(canvas);
+    const pages = canvasTexture(canvas);
+    const edge = canvasTexture(canvas);
+    edge.center.set(0.5, 0.5);
+    edge.rotation = Math.PI / 2;
+    pageTextures = { pages, edge };
+  }
+  return pageTextures;
+}
+
+function applyOpacity(material: THREE.Material, opacity: number) {
+  const transparent = opacity < 0.999;
+  if (material.transparent !== transparent) {
+    material.transparent = transparent;
+    material.needsUpdate = true;
+  }
+  material.opacity = opacity;
+}
+
+// ---------------------------------------------------------------------------
 // Book geometry — hardcover model.
 //
 // Real bound books aren't solid bricks: the front cover, back cover, and spine
@@ -525,7 +651,7 @@ function bowCoverGeometry(
   geom.computeVertexNormals();
 }
 
-export function Book({ cover, index = 0, opacityRef }: BookProps) {
+export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
   // The hardcover model uses four separate meshes — front board, back board,
   // spine, and paper block — instead of the old single-cover + single-paper
   // setup. This is what lets the page block sit visibly recessed inside the
@@ -536,94 +662,6 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   const spineRef = useRef<THREE.Mesh>(null);
   const paperMeshRef = useRef<THREE.Mesh>(null);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
-
-  const wear = useMemo(() => getWearAmount(index), [index]);
-
-  const { coverTex, spineTex, pagesTex, pagesEdgeTex } = useMemo(() => {
-      const make = (
-        width: number,
-        height: number,
-        paint: (c: HTMLCanvasElement) => void,
-        opts?: { srgb?: boolean },
-      ) => {
-        const c = document.createElement("canvas");
-        c.width = width;
-        c.height = height;
-        paint(c);
-        const tex = new THREE.CanvasTexture(c);
-        tex.colorSpace = opts?.srgb
-          ? THREE.SRGBColorSpace
-          : THREE.NoColorSpace;
-        tex.anisotropy = 8;
-        return tex;
-      };
-      // Cover texture — paint the procedural artwork synchronously as a
-      // fallback, then (if this book has a real cover image) load that
-      // image and draw it on top once it's ready. `texture.needsUpdate`
-      // triggers a re-upload to the GPU. We can't use the `make` helper
-      // here because we need a handle to the canvas to overlay onto it.
-      const coverCanvas = document.createElement("canvas");
-      coverCanvas.width = 512;
-      coverCanvas.height = 768;
-      paintCover(coverCanvas, cover, wear);
-      const coverTex = new THREE.CanvasTexture(coverCanvas);
-      coverTex.colorSpace = THREE.SRGBColorSpace;
-      coverTex.anisotropy = 8;
-
-      if (cover.image && typeof window !== "undefined") {
-        const img = new window.Image();
-        img.src = cover.image;
-        img.onload = () => {
-          const ctx = coverCanvas.getContext("2d");
-          if (!ctx) return;
-          ctx.drawImage(img, 0, 0, coverCanvas.width, coverCanvas.height);
-          coverTex.needsUpdate = true;
-        };
-      }
-
-      // Spine texture — flat baseColor + vertical title in the same serif
-      // stack the page's HTML headings use. We still hook
-      // `document.fonts.ready` and re-paint once fonts settle, in case a
-      // future custom serif is added to the loader — system serifs
-      // (Georgia / ui-serif) are present on first paint so this is a
-      // free safety net.
-      const spineCanvas = document.createElement("canvas");
-      spineCanvas.width = 128;
-      spineCanvas.height = 768;
-      paintSpine(spineCanvas, cover);
-      const spineTex = new THREE.CanvasTexture(spineCanvas);
-      spineTex.colorSpace = THREE.SRGBColorSpace;
-      spineTex.anisotropy = 8;
-      if (typeof document !== "undefined" && document.fonts?.ready) {
-        document.fonts.ready.then(() => {
-          paintSpine(spineCanvas, cover);
-          spineTex.needsUpdate = true;
-        });
-      }
-
-      // Pages texture — horizontal stripes representing dense page edges.
-      // We paint ONCE and create TWO textures over the same canvas: the
-      // upright one for the top/bottom faces (where horizontal stripes read
-      // as page edges running spine→open-edge), and a rotated copy for the
-      // open-edge face (where stripes need to appear VERTICAL because each
-      // page is a vertical sheet, so its visible edge is vertical too).
-      const pagesCanvas = document.createElement("canvas");
-      pagesCanvas.width = 512;
-      pagesCanvas.height = 512;
-      paintPages(pagesCanvas);
-
-      const pagesTex = new THREE.CanvasTexture(pagesCanvas);
-      pagesTex.colorSpace = THREE.SRGBColorSpace;
-      pagesTex.anisotropy = 8;
-
-      const pagesEdgeTex = new THREE.CanvasTexture(pagesCanvas);
-      pagesEdgeTex.colorSpace = THREE.SRGBColorSpace;
-      pagesEdgeTex.anisotropy = 8;
-      pagesEdgeTex.center.set(0.5, 0.5);
-      pagesEdgeTex.rotation = Math.PI / 2;
-
-      return { coverTex, spineTex, pagesTex, pagesEdgeTex };
-    }, [cover, wear]);
 
   // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
   //
@@ -641,6 +679,12 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
   //
   // All board side-strips (+X / ±Y) and the spine's ±Y use coverEdge.
   const standardMaterials = useMemo(() => {
+    const { cover: coverTex, spine: spineTex } = getCoverTextures(
+      cover,
+      getWearAmount(index),
+    );
+    const { pages: pagesTex, edge: pagesEdgeTex } = getPageTextures();
+
     // All materials are flat colour/texture only — no normal maps. Books
     // render as plain printed objects, not embossed ones.
     const pages = new THREE.MeshStandardMaterial({
@@ -695,13 +739,20 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
       // Face order: +X, -X, +Y, -Y, +Z, -Z.
       paper: [pagesEdge, pagesEdge, pages, pages, pages, pages],
     };
-  }, [
-    coverTex,
-    spineTex,
-    pagesTex,
-    pagesEdgeTex,
-    cover.baseColor,
-  ]);
+  }, [cover, index]);
+
+  // Materials are per instance (textures are shared and cached above).
+  useEffect(() => {
+    const all = new Set([
+      ...standardMaterials.frontBoard,
+      ...standardMaterials.backBoard,
+      ...standardMaterials.spine,
+      ...standardMaterials.paper,
+    ]);
+    return () => {
+      for (const material of all) material.dispose();
+    };
+  }, [standardMaterials]);
 
   // Imperatively swap geometry size each frame so tweakpane edits to
   // bookWidth/Height/Depth don't require React re-renders (which caused
@@ -816,28 +867,27 @@ export function Book({ cover, index = 0, opacityRef }: BookProps) {
     );
 
     // Apply per-book fade opacity to every material across all four meshes.
-    const op = opacityRef?.current ?? 1;
-    const wantTransparent = op < 0.999;
-    const applyOpacity = (mat: THREE.Material) => {
-      const m = mat as THREE.Material & { opacity: number };
-      if (m.transparent !== wantTransparent) {
-        m.transparent = wantTransparent;
-        m.needsUpdate = true;
+    const op = opacitiesRef?.current?.[index] ?? 1;
+    for (const mesh of [frontBoard, backBoard, spineMesh, paperMesh]) {
+      for (const material of mesh.material as THREE.Material[]) {
+        applyOpacity(material, op);
       }
-      m.opacity = op;
-    };
-    for (const mat of standardMaterials.frontBoard) applyOpacity(mat);
-    for (const mat of standardMaterials.backBoard) applyOpacity(mat);
-    for (const mat of standardMaterials.spine) applyOpacity(mat);
-    for (const mat of standardMaterials.paper) applyOpacity(mat);
+    }
   });
 
+  // R3F only disposes the placeholder <boxGeometry> children it created; the
+  // RoundedBoxGeometries swapped in above are ours. The mesh objects live as
+  // long as this component, so capture them now and dispose whatever
+  // geometry each holds at unmount.
   useEffect(() => {
+    const meshes = [
+      frontBoardRef.current,
+      backBoardRef.current,
+      spineRef.current,
+      paperMeshRef.current,
+    ];
     return () => {
-      frontBoardRef.current?.geometry.dispose();
-      backBoardRef.current?.geometry.dispose();
-      spineRef.current?.geometry.dispose();
-      paperMeshRef.current?.geometry.dispose();
+      for (const mesh of meshes) mesh?.geometry.dispose();
     };
   }, []);
 

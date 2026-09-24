@@ -70,7 +70,7 @@ export type SceneParams = {
   phoneMouseLerp: number;      // 0..1, smoothing per frame (higher = snappier)
 
   // Carousel transform — translate / rotate / scale the entire ring of
-  // books as a rigid body. Applied on the outer <group> wrapping all 14
+  // books as a rigid body. Applied on the outer <group> wrapping all the
   // book nodes (so per-book layout still happens in carousel-local space).
   carouselX: number;
   carouselY: number;

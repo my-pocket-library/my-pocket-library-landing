@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Pane } from "tweakpane";
 import { PARAMS, type SceneParams } from "@/lib/scene-params";
@@ -28,12 +28,6 @@ type PaneLike = Folder & {
 export function Tweakpane() {
   const hostRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<PaneLike | null>(null);
-  // Only render the portal after mount so document.body is available (SSR safe).
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -217,10 +211,10 @@ export function Tweakpane() {
       pane.dispose();
       paneRef.current = null;
     };
-  }, [mounted]);
+  }, []);
 
-  if (!mounted) return null;
-
+  // Client-only: hero.tsx loads this with next/dynamic `ssr: false`, so
+  // document.body always exists here.
   return createPortal(
     <div
       ref={hostRef}

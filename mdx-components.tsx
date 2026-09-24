@@ -14,9 +14,11 @@ import type { MDXComponents } from "mdx/types";
  */
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
+    // Scrolls sideways on narrow screens rather than squeezing columns; the
+    // first column holds the row labels, so it gets a floor width.
     table: ({ children, ...props }) => (
-      <div role="region" aria-label="Personal data and processing purposes" tabIndex={0} className="my-6 overflow-x-auto rounded-xl border border-ink/15">
-        <table className="w-full min-w-[640px] border-collapse text-left text-sm leading-relaxed [&_th]:bg-ink/5 [&_th]:font-semibold [&_th]:p-4 [&_td]:p-4 [&_td]:align-top [&_tr]:border-b [&_tr]:border-ink/10" {...props}>{children}</table>
+      <div role="region" aria-label="Personal data and processing purposes" tabIndex={0} className="my-6 overflow-x-auto overscroll-x-contain rounded-xl border border-ink/15">
+        <table className="w-full min-w-[720px] border-collapse text-left text-sm leading-relaxed [&_th]:bg-ink/5 [&_th]:p-4 [&_th]:align-bottom [&_th]:font-semibold [&_th]:text-ink [&_td]:p-4 [&_td]:align-top [&_td:first-child]:min-w-36 [&_td:first-child]:font-medium [&_td:first-child]:text-ink [&_tr]:border-b [&_tr]:border-ink/10 [&_tbody_tr:last-child]:border-b-0" {...props}>{children}</table>
       </div>
     ),
     // Headings inside MDX content. Light defaults — page-level type comes
@@ -47,7 +49,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     a: ({ children, ...props }) => (
       <a
-        className="wrap-anywhere text-ink underline decoration-black/30 underline-offset-4 transition-colors hover:decoration-black"
+        className="break-words text-ink underline decoration-ink/30 underline-offset-4 transition-colors hover:decoration-ink"
         {...props}
       >
         {children}

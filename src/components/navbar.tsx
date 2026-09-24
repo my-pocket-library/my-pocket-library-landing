@@ -13,10 +13,12 @@ import { cn } from "@/lib/utils";
 //   #app     → <AppShowcase>
 //   #faq     → <FaqSection>
 //   #support → <SupportSection>
+// "App" is dropped below `sm` so the bar fits on one row on phones — the
+// hero's "See how it works" button already goes to #app.
 const navLinks = [
-  { label: "App", href: "#app" },
-  { label: "FAQ", href: "#faq" },
-  { label: "Support", href: "#support" },
+  { label: "App", href: "#app", className: "hidden sm:inline-flex" },
+  { label: "FAQ", href: "#faq", className: "inline-flex" },
+  { label: "Support", href: "#support", className: "inline-flex" },
 ];
 
 export function Navbar() {
@@ -24,12 +26,15 @@ export function Navbar() {
   //   inside the hero (≈ first viewport-height of the page) → always shown
   //   below the hero, scrolling DOWN  → hide
   //   below the hero, scrolling UP    → show
+  // Once the page has scrolled at all, the bar gets a translucent backdrop
+  // so it stays legible over whatever content slides beneath it.
   //
   // useLenis fires on every Lenis frame and gives us the smoothed scroll
   // position + direction (1 = down, -1 = up, 0 = idle). Re-using Lenis
   // here keeps the slide animation in lockstep with the page's smooth-
   // scroll motion rather than fighting raw `window.scroll` events.
   const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
 
   // useLenis returns the Lenis instance even when called with a callback,
@@ -37,7 +42,9 @@ export function Navbar() {
   // (for the hide/show animation below) AND a handle to call scrollTo()
   // from the home-link click handler further down.
   const lenis = useLenis(({ scroll, direction }) => {
-    // The hero is `min-h-screen`, so its bottom edge is at ≈ 100vh. Use
+    setScrolled(scroll > 8);
+
+    // The hero is `min-h-svh`, so its bottom edge is at ≈ 100vh. Use
     // a small early-trigger margin so the header starts hiding just
     // before the hero is fully off-screen, instead of waiting for the
     // exact boundary.
@@ -60,44 +67,57 @@ export function Navbar() {
     // On the home page, clicking the logo would otherwise be a no-op (we
     // already are at `/`). Hijack the click and smooth-scroll to the top
     // through Lenis so the same gesture works for "go home" from any
-    // depth in the page. On other routes (`/privacy`, `/terms`) let
-    // next/link navigate normally — Next.js scrolls the new page to top
-    // on its own, which Lenis then smooths.
-    if (pathname === "/") {
+    // depth in the page. On other routes let next/link navigate normally
+    // — Next.js scrolls the new page to top on its own, which Lenis then
+    // smooths.
+    if (pathname === "/" && lenis) {
       e.preventDefault();
-      lenis?.scrollTo(0);
+      lenis.scrollTo(0);
     }
   };
 
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-30 transition-transform duration-300 ease-out",
-        hidden ? "-translate-y-full" : "translate-y-0",
+        "fixed inset-x-0 top-0 z-30 border-b transition-[translate,background-color,border-color] duration-300 ease-out motion-reduce:transition-none",
+        // A keyboard user tabbing into a hidden bar brings it back.
+        hidden ? "-translate-y-full focus-within:translate-y-0" : "translate-y-0",
+        scrolled
+          ? "border-ink/10 bg-ana-1/85 backdrop-blur-md"
+          : "border-transparent",
       )}
     >
-      <div className="mx-auto flex min-h-20 max-w-[1400px] items-center justify-between px-6 md:px-10">
-        <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 md:justify-start md:gap-10">
-          <Link
-            href="/"
-            onClick={handleHomeClick}
-            className="inline-flex items-center gap-3 font-serif text-xl tracking-tight text-ink"
-          >
-            <Image src="/brand/app-icon.png" alt="" width={40} height={40} className="rounded-xl" />
-            <span><span className="italic">My</span>{" "}Pocket Library</span>
-          </Link>
-          <nav className="flex items-center gap-4 md:gap-7">
-            {navLinks.map((link) => (
-              <a
-                key={link.label}
-                href={pathname === "/" ? link.href : `/${link.href}`}
-                className="inline-flex min-h-11 items-center text-sm text-ink/70 transition-colors hover:text-ink"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-        </div>
+      <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-5 md:h-20 md:justify-start md:gap-10 md:px-10">
+        <Link
+          href="/"
+          onClick={handleHomeClick}
+          className="inline-flex shrink-0 items-center gap-2.5 rounded-lg font-serif text-lg tracking-tight text-ink md:gap-3 md:text-xl"
+        >
+          <Image
+            src="/brand/app-icon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="size-8 rounded-[9px] md:size-10 md:rounded-xl"
+          />
+          <span>
+            <span className="italic">My</span> Pocket Library
+          </span>
+        </Link>
+        <nav aria-label="Primary" className="flex items-center gap-4 md:gap-7">
+          {navLinks.map((link) => (
+            <a
+              key={link.label}
+              href={pathname === "/" ? link.href : `/${link.href}`}
+              className={cn(
+                "min-h-11 items-center rounded-sm text-sm text-ink/70 transition-colors hover:text-ink",
+                link.className,
+              )}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
       </div>
     </header>
   );
