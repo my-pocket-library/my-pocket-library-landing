@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { ReactLenis, type LenisRef } from "lenis/react";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 /**
  * Thin client wrapper around Lenis. Mounted once at the root of the app so
@@ -19,9 +20,9 @@ import { ReactLenis, type LenisRef } from "lenis/react";
  */
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
   const lenisRef = useRef<LenisRef>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const ro = new ResizeObserver(() => {
       lenisRef.current?.lenis?.resize();
     });
@@ -29,12 +30,21 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
     return () => ro.disconnect();
   }, []);
 
-  // `anchors: true` makes Lenis intercept clicks on <a href="#id"> and
-  // smoothly scroll to the target instead of letting the browser instant-
-  // jump. Required for the navbar's "App / FAQ / Support" anchor links to
-  // feel consistent with the rest of the page's smoothed scrolling.
+  // `anchors` makes Lenis intercept clicks on <a href="#id"> so the navbar's
+  // "App / FAQ / Support" links scroll consistently with the rest of the
+  // page. With reduced motion, wheel scrolling stays native and anchor
+  // links jump instead of gliding; Lenis still reports scroll position,
+  // which the navbar's hide/show logic reads.
   return (
-    <ReactLenis ref={lenisRef} root options={{ anchors: true }}>
+    <ReactLenis
+      ref={lenisRef}
+      root
+      options={
+        reducedMotion
+          ? { smoothWheel: false, anchors: { immediate: true } }
+          : { anchors: true }
+      }
+    >
       {children}
     </ReactLenis>
   );

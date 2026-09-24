@@ -1,22 +1,26 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import {
   type RefObject,
   Suspense,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import Core from "smooothy";
 import * as THREE from "three";
-import { Book, type BookCover } from "./book";
+import { Book, type BookCover, loadCoverImage } from "./book";
 import { Phone } from "./phone";
 import { PARAMS } from "@/lib/scene-params";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
+import { cn } from "@/lib/utils";
 
 // 9 real, image-backed books. The COVERS array below repeats this list
 // twice so the carousel has 18 entries — each duplicate sits 180° from
 // its sibling, so duplicates are never visible on-screen at the same
-// time (only the front ~5 books are rendered with opacity 1).
+// time (only the front ~5 books are rendered with opacity 1). Duplicates
+// are the same objects, so they share textures (see book.tsx).
 const BOOKS: BookCover[] = [
   {
     title: "The Trial",
@@ -75,6 +79,7 @@ const BOOKS: BookCover[] = [
   },
   {
     title: "Rüyaların Çağrısı",
+    author: "Katia Haviters",
     baseColor: "#2a3d5c",
     accent: "#d4b87a",
     ink: "#ead49a",
@@ -113,16 +118,30 @@ const SLIDE_PX = 220;
 // this y value (no float, no clipping). Phone sits a fixed offset above it.
 const GROUND_Y = -1.55;
 
+// Longest frame step the carousel will integrate. The clock keeps running
+// while the scene is paused (off-screen, background tab), so the first
+// delta after resuming can be seconds long — unclamped, it would queue a
+// dozen book steps at once and whirl the carousel.
+const MAX_FRAME_DELTA = 0.1;
+
+// The scene fades in once cover images have loaded, or after this long
+// regardless (slow connections still get the scene, with flat covers that
+// fill in as images arrive).
+const COVER_WAIT_MS = 1500;
+
 // ---------------------------------------------------------------------------
 // Books — auto-rotating circular carousel.
 // Drag/click selection is gone; the carousel just turns at PARAMS.autoCarousel
 // pace, and we expose which integer book index is currently "front-facing"
-// (closest to angle 0) via the onCenteredBookChange callback so the Phone
-// can sync its inner screen to the same book.
+// (closest to angle 0) via refs so the Phone can sync its inner screen to the
+// same book.
 // ---------------------------------------------------------------------------
 
 type BooksProps = {
   sliderRef: RefObject<Core | null>;
+  /** False when the visitor prefers reduced motion: the carousel holds
+   *  still instead of auto-rotating. */
+  animate: boolean;
   /** Integer index of the current 'front-facing' book. Written every frame
    *  by Books's useFrame; the Phone reads it inside its own useFrame so the
    *  texture swap happens in the same frame as the position update (no
@@ -155,6 +174,7 @@ function wrapToPi(a: number): number {
 
 function Books({
   sliderRef,
+  animate,
   centeredIndexRef,
   transitionRef,
 }: BooksProps) {
@@ -163,18 +183,18 @@ function Books({
   // transform (translate / rotate / scale) from PARAMS each frame so the
   // tweakpane can nudge the whole ring without re-rendering.
   const carouselGroupRef = useRef<THREE.Group>(null);
-  // Per-book opacity containers. Books on the front arc read 1; books behind
-  // the camera read 0. Updated every frame in this component's useFrame, read
-  // every frame inside each <Book>'s useFrame so the fade tracks rotation
-  // without React-state lag.
-  const opacityRefs = useRef<{ current: number }[]>(
-    Array.from({ length: COVERS.length }, () => ({ current: 1 })),
-  );
+  // Per-book opacity, indexed like COVERS. Books on the front arc read 1;
+  // books behind the camera read 0. Written every frame here and read every
+  // frame inside each <Book>'s useFrame, so the fade tracks rotation without
+  // React-state lag. The ref object itself is what gets passed down.
+  const opacitiesRef = useRef<number[]>(COVERS.map(() => 1));
   // Accumulator that drives the integer slider.target step. Every full
   // unit of accumulator => one slider.target -= 1 nudge => one book advance.
   const autoStepAccumRef = useRef(0);
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    const delta = Math.min(rawDelta, MAX_FRAME_DELTA);
+
     // Apply carousel-group transform from PARAMS. Cheap to set every frame;
     // saves a re-render when tweakpane mutates the values.
     const cg = carouselGroupRef.current;
@@ -200,7 +220,7 @@ function Books({
     // Auto-rotate: accumulate at PARAMS.autoCarouselSpeed books-per-second
     // and trigger one integer step on `target` for each full unit. smooothy
     // lerps `current` toward `target` so the steps feel continuous.
-    if (PARAMS.autoCarousel && !slider.paused) {
+    if (animate && PARAMS.autoCarousel && !slider.paused) {
       autoStepAccumRef.current += delta * PARAMS.autoCarouselSpeed;
       while (autoStepAccumRef.current >= 1) {
         autoStepAccumRef.current -= 1;
@@ -228,13 +248,14 @@ function Books({
     const angleStep = (Math.PI * 2) / count;
     const R = PARAMS.circleRadius;
     const offsetAngle = slider.current * angleStep;
-    const t = performance.now() / 1000;
+    const t = animate ? performance.now() / 1000 : 0;
 
     // Front-arc opacity band, in radians. Front FULL_BOOKS = full alpha,
     // FADE_WIDTH_BOOKS = linear fade band on either side, everything past
     // that is fully invisible (and culled via node.visible).
     const fullHalf = (FULL_BOOKS / 2) * angleStep;
     const fadeWidth = FADE_WIDTH_BOOKS * angleStep;
+    const opacities = opacitiesRef.current;
 
     for (let i = 0; i < count; i++) {
       const node = refs.current[i];
@@ -282,7 +303,7 @@ function Books({
       } else {
         opacity = Math.max(0, 1 - (dist - fullHalf) / fadeWidth);
       }
-      opacityRefs.current[i].current = opacity;
+      opacities[i] = opacity;
       // Hard cull when invisible — skips all draw calls for back-half books.
       node.visible = opacity > 0.001;
     }
@@ -297,11 +318,7 @@ function Books({
             refs.current[i] = el;
           }}
         >
-          <Book
-            cover={cover}
-            index={i}
-            opacityRef={opacityRefs.current[i]}
-          />
+          <Book cover={cover} index={i} opacitiesRef={opacitiesRef} />
         </group>
       ))}
     </group>
@@ -309,15 +326,11 @@ function Books({
 }
 
 function CameraRig() {
-  const { camera } = useThree();
-  useFrame(() => {
+  useFrame(({ camera }) => {
     camera.position.set(PARAMS.camX, PARAMS.camY, PARAMS.camZ);
-    if ("fov" in camera) {
-      const persp = camera as THREE.PerspectiveCamera;
-      if (persp.fov !== PARAMS.fov) {
-        persp.fov = PARAMS.fov;
-        persp.updateProjectionMatrix();
-      }
+    if (camera instanceof THREE.PerspectiveCamera && camera.fov !== PARAMS.fov) {
+      camera.fov = PARAMS.fov;
+      camera.updateProjectionMatrix();
     }
     camera.lookAt(0, 0, 0);
   });
@@ -380,14 +393,34 @@ function LiveFog() {
   );
 }
 
+/** Calls `onFrame` once, after the scene's first rendered frame. */
+function FirstFrame({ onFrame }: { onFrame: () => void }) {
+  const doneRef = useRef(false);
+  useFrame(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onFrame();
+  });
+  return null;
+}
+
 export function BookScene() {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<Core | null>(null);
+  const reducedMotion = useReducedMotion();
 
   // Refs read by Phone every frame so the texture swap + slide stay in
   // perfect lockstep with the carousel (no React-state-vs-useFrame race).
   const centeredIndexRef = useRef<number>(0);
   const transitionRef = useRef<number>(0);
+
+  // Render only while the hero is on screen — the scene animates every
+  // frame, and there's no reason to keep the GPU busy below the fold.
+  const [inView, setInView] = useState(true);
+  // Fade-in gate: first frame drawn + cover images in (or timed out).
+  const [firstFrame, setFirstFrame] = useState(false);
+  const [coversReady, setCoversReady] = useState(false);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -406,15 +439,48 @@ export function BookScene() {
     };
   }, []);
 
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "100px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Starts the downloads now — the books reuse the same cached promises
+    // when they build their textures.
+    const covers = BOOKS.flatMap((b) => (b.image ? [loadCoverImage(b.image)] : []));
+    const timeout = new Promise((resolve) => setTimeout(resolve, COVER_WAIT_MS));
+    Promise.race([Promise.allSettled(covers), timeout]).then(() => {
+      if (!cancelled) setCoversReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ready = firstFrame && coversReady;
+
   return (
-    <div className="relative h-full w-full">
+    <div
+      ref={wrapperRef}
+      aria-hidden
+      className={cn(
+        "relative h-full w-full transition-opacity duration-700 ease-out motion-reduce:transition-none",
+        ready ? "opacity-100" : "opacity-0",
+      )}
+    >
       {/* Invisible smooothy host. Carousel is driven entirely by the per-frame
        *  target nudge inside Books's useFrame; we still need a DOM wrapper
        *  for Core to read measurements from. */}
       <div
         ref={hostRef}
         data-slider
-        aria-hidden
         className="absolute inset-0 z-0 flex overflow-hidden opacity-0 pointer-events-none"
       >
         {COVERS.map((_, i) => (
@@ -426,6 +492,7 @@ export function BookScene() {
       </div>
 
       <Canvas
+        frameloop={inView ? "always" : "never"}
         dpr={[1, 2]}
         camera={{
           position: [PARAMS.camX, PARAMS.camY, PARAMS.camZ],
@@ -438,15 +505,18 @@ export function BookScene() {
         <LiveFog />
         <CameraRig />
         <LiveLights />
+        <FirstFrame onFrame={() => setFirstFrame(true)} />
 
         <Suspense fallback={null}>
           <Books
             sliderRef={sliderRef}
+            animate={!reducedMotion}
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}
           />
           <Phone
             covers={COVERS}
+            animate={!reducedMotion}
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}
           />

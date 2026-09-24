@@ -4,7 +4,7 @@ import { PerspectiveCamera, RenderTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { type BookCover, paintCover } from "./book";
+import { type BookCover, loadCoverImage, paintCover } from "./book";
 import { PARAMS } from "@/lib/scene-params";
 
 // ============================================================================
@@ -63,8 +63,7 @@ function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
 
 // ============================================================================
 // Inner-scene framing — ortho camera matched to the screen plane's aspect so
-// the app-UI canvas maps 1:1 with no stretch, and a world-to-inner conversion
-// factor that keeps the sliding book in lockstep with the outer carousel.
+// the app-UI canvas maps 1:1 with no stretch.
 // ============================================================================
 
 const SCREEN_ASPECT = SCREEN_W / SCREEN_H;
@@ -72,9 +71,6 @@ const ORTHO_HALF_H = 1.05;
 const ORTHO_HALF_W = ORTHO_HALF_H * SCREEN_ASPECT;
 const FBO_H = 1024;
 const FBO_W = Math.round(FBO_H * SCREEN_ASPECT);
-
-const PHONE_HALF_W_WORLD = SCREEN_W / 2;
-const WORLD_TO_INNER = ORTHO_HALF_W / PHONE_HALF_W_WORLD;
 
 // Inner perspective-camera framing. To preserve the same visible area the
 // ortho was giving us at the planes' z, set vertical FOV so that at distance
@@ -233,10 +229,18 @@ function paintAppShell(canvas: HTMLCanvasElement) {
   ctx.stroke();
 }
 
+/** Where the cover sits on the per-book content canvas (book aspect 2:3). */
+function coverRect(W: number, H: number) {
+  const w = W * 0.55;
+  const h = w * (768 / 512);
+  return { x: (W - w) / 2, y: H * 0.2, w, h };
+}
+
 /**
  * Per-book content — cover artwork with drop shadow + white rounded info card
  * containing the title and author. Drawn on a transparent canvas so it can
- * slide over the static app shell.
+ * slide over the static app shell. Image-backed books get a flat baseColor
+ * block in the cover slot; BookContent draws the image over it once loaded.
  */
 function paintBookContent(canvas: HTMLCanvasElement, cover: BookCover) {
   const ctx = canvas.getContext("2d");
@@ -246,17 +250,12 @@ function paintBookContent(canvas: HTMLCanvasElement, cover: BookCover) {
 
   ctx.clearRect(0, 0, W, H);
 
-  // Cover image — paint a high-res version, then draw it at display size
-  // so the embossed pattern reads cleanly at FBO resolution.
-  const coverCanvas = document.createElement("canvas");
-  coverCanvas.width = 512;
-  coverCanvas.height = 768;
-  paintCover(coverCanvas, cover, 1);
-
-  const coverDispW = W * 0.55;
-  const coverDispH = coverDispW * (768 / 512); // book aspect
-  const coverX = (W - coverDispW) / 2;
-  const coverY = H * 0.20;
+  const {
+    x: coverX,
+    y: coverY,
+    w: coverDispW,
+    h: coverDispH,
+  } = coverRect(W, H);
 
   // Drop shadow under the cover (drawn as a separately blurred fill so the
   // cover itself renders without shadow leakage onto adjacent pixels).
@@ -269,7 +268,18 @@ function paintBookContent(canvas: HTMLCanvasElement, cover: BookCover) {
   ctx.fillRect(coverX + 6, coverY + 8, coverDispW - 12, coverDispH - 12);
   ctx.restore();
 
-  ctx.drawImage(coverCanvas, coverX, coverY, coverDispW, coverDispH);
+  if (cover.image) {
+    ctx.fillStyle = cover.baseColor;
+    ctx.fillRect(coverX, coverY, coverDispW, coverDispH);
+  } else {
+    // Procedural cover — painted at high resolution, then drawn at display
+    // size so the pattern reads cleanly at FBO resolution.
+    const coverCanvas = document.createElement("canvas");
+    coverCanvas.width = 512;
+    coverCanvas.height = 768;
+    paintCover(coverCanvas, cover, 1);
+    ctx.drawImage(coverCanvas, coverX, coverY, coverDispW, coverDispH);
+  }
 
   // ---- Info card: white rounded rect with title + author --------------
   const cardW = W * 0.78;
@@ -309,12 +319,15 @@ function paintBookContent(canvas: HTMLCanvasElement, cover: BookCover) {
 
 type PhoneProps = {
   covers: BookCover[];
+  /** False when the visitor prefers reduced motion: no mouse parallax. */
+  animate: boolean;
   centeredIndexRef: RefObject<number>;
   transitionRef: RefObject<number>;
 };
 
 export function Phone({
   covers,
+  animate,
   centeredIndexRef,
   transitionRef,
 }: PhoneProps) {
@@ -408,10 +421,11 @@ export function Phone({
     // X-axis pitch follows mouse-y (negate mouseY because browser y
     // grows DOWN — so "cursor below centre" should pitch the phone-top
     // toward the viewer, not away).
-    const targetPitch = PARAMS.phoneMouseRotation
+    const parallax = animate && PARAMS.phoneMouseRotation;
+    const targetPitch = parallax
       ? -mouseRef.current.y * PARAMS.phoneMouseStrengthX
       : 0;
-    const targetYaw = PARAMS.phoneMouseRotation
+    const targetYaw = parallax
       ? mouseRef.current.x * PARAMS.phoneMouseStrengthY
       : 0;
     const lerp = Math.max(0, Math.min(1, PARAMS.phoneMouseLerp));
@@ -578,9 +592,13 @@ function BookContent({
 
   // Pre-build all per-book content textures up front so the swap on index
   // change is a pointer assignment — no allocation, no GPU upload mid-frame.
-  const contentTextures = useMemo<(THREE.CanvasTexture | null)[]>(() => {
-    if (typeof document === "undefined") return covers.map(() => null);
+  // One texture per distinct cover: the carousel lists every book twice.
+  const contentTextures = useMemo(() => {
+    const byCover = new Map<BookCover, THREE.CanvasTexture>();
     return covers.map((cover) => {
+      const existing = byCover.get(cover);
+      if (existing) return existing;
+
       const c = document.createElement("canvas");
       c.width = FBO_W;
       c.height = FBO_H;
@@ -588,27 +606,21 @@ function BookContent({
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
+      byCover.set(cover, t);
 
-      // If this book has a real cover image, load it and overlay it at
-      // exactly the same rect paintBookContent used for the procedural
-      // cover. Same coords as in paintBookContent above:
-      //   width  = canvas.width × 0.55
-      //   x      = (canvas.width − width) / 2
-      //   y      = canvas.height × 0.20
-      //   height = width × (768 / 512)
-      if (cover.image && typeof window !== "undefined") {
-        const img = new window.Image();
-        img.src = cover.image;
-        img.onload = () => {
-          const ctx = c.getContext("2d");
-          if (!ctx) return;
-          const coverDispW = c.width * 0.55;
-          const coverDispH = coverDispW * (768 / 512);
-          const coverX = (c.width - coverDispW) / 2;
-          const coverY = c.height * 0.20;
-          ctx.drawImage(img, coverX, coverY, coverDispW, coverDispH);
-          t.needsUpdate = true;
-        };
+      // Real cover image: draw it into the slot paintBookContent left for
+      // it (same image the 3D book uses — loaded once, see loadCoverImage).
+      if (cover.image) {
+        loadCoverImage(cover.image).then(
+          (img) => {
+            const r = coverRect(c.width, c.height);
+            c.getContext("2d")?.drawImage(img, r.x, r.y, r.w, r.h);
+            t.needsUpdate = true;
+          },
+          () => {
+            // Keep the flat placeholder.
+          },
+        );
       }
 
       return t;
@@ -617,7 +629,7 @@ function BookContent({
 
   useEffect(() => {
     return () => {
-      for (const t of contentTextures) t?.dispose();
+      for (const t of new Set(contentTextures)) t.dispose();
     };
   }, [contentTextures]);
 

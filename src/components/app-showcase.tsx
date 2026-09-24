@@ -67,7 +67,7 @@ export function AppShowcase() {
         aria-label="App screenshots"
         tabIndex={0}
         role="region"
-        className="relative mt-12 flex snap-x snap-mandatory gap-5 overflow-x-auto overscroll-x-contain pb-4 md:mt-16 lg:justify-center lg:gap-7 lg:!px-6"
+        className="scrollbar-subtle relative mt-12 flex snap-x snap-mandatory gap-5 overflow-x-auto overscroll-x-contain pb-4 md:mt-16 lg:justify-center lg:gap-7 lg:!px-6"
         style={{
           paddingLeft: "calc(50% - min(130px, 36vw))",
           paddingRight: "calc(50% - min(130px, 36vw))",
@@ -82,11 +82,11 @@ export function AppShowcase() {
             <div
               className={cn(
                 "relative aspect-[1242/2688] overflow-hidden rounded-[34px] border border-ink/10 bg-white",
-                "will-change-[transform,opacity,filter]",
-                "transition-[opacity,filter,transform] duration-[1100ms] ease-out",
+                "will-change-[translate,opacity,filter]",
+                "transition-[opacity,filter,translate] duration-[1100ms] ease-out motion-reduce:transition-none",
                 revealed
                   ? "translate-y-0 opacity-100 blur-0"
-                  : "translate-y-8 opacity-0 blur-md",
+                  : "translate-y-8 opacity-0 blur-md motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:blur-none",
               )}
               style={{ transitionDelay: revealed ? `${i * 140}ms` : "0ms" }}
             >
@@ -97,7 +97,6 @@ export function AppShowcase() {
                 sizes="(min-width: 768px) 260px, 72vw"
                 className="object-cover"
                 draggable={false}
-                priority={i === 0}
               />
             </div>
           </div>
