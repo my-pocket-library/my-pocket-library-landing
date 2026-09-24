@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   type RefObject,
   Suspense,
@@ -8,10 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import Core from "smooothy";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Book, type BookCover, loadCoverImage } from "./book";
 import { Phone } from "./phone";
+import { onFrameRequest } from "@/lib/scene-frame";
 import { PARAMS } from "@/lib/scene-params";
 import { cn } from "@/lib/utils";
 
@@ -111,17 +112,20 @@ const COVERS: BookCover[] = [...BOOKS, ...BOOKS];
 
 export { COVERS };
 
-const SLIDE_PX = 220;
-
 // Floor plane y-coordinate. Books are positioned so their bottom edge sits on
 // this y value (no float, no clipping). Phone sits a fixed offset above it.
 const GROUND_Y = -1.55;
 
-// Longest frame step the carousel will integrate. The clock keeps running
-// while the scene is paused (off-screen, background tab), so the first
-// delta after resuming can be seconds long — unclamped, it would queue a
-// dozen book steps at once and whirl the carousel.
+// Longest frame step the carousel will integrate, and the step used for the
+// first frame after an idle stretch (whose raw delta spans the whole pause).
 const MAX_FRAME_DELTA = 0.1;
+const RESUME_DELTA = 1 / 60;
+
+// The ease stops (and the scene goes idle) once the carousel is this close
+// to its target, in books. One book step moves a front book ~150 px, so
+// this is about a third of a pixel — without it, the exponential tail would
+// keep drawing invisible motion for another couple of seconds.
+const SETTLE_EPSILON = 2e-3;
 
 // The scene fades in once cover images have loaded, or after this long
 // regardless (slow connections still get the scene, with flat covers that
@@ -134,17 +138,20 @@ const COVER_WAIT_MS = 1500;
 const FADE_MS = 700;
 
 // ---------------------------------------------------------------------------
-// Books — auto-rotating circular carousel.
-// Drag/click selection is gone; the carousel just turns at PARAMS.autoCarousel
-// pace, and we expose which integer book index is currently "front-facing"
-// (closest to angle 0) via refs so the Phone can sync its inner screen to the
-// same book.
+// Books — auto-advancing circular carousel.
+//
+// The carousel position is a number of books: the target steps down by one
+// every 1 / autoCarouselSpeed seconds and the position eases toward it with
+// a time constant of lerpFactor seconds. The scene renders on demand, so
+// frames are requested only while the position is still easing; between
+// steps a timer wakes the loop for the next one. Books exposes the centred
+// book and the progress towards its neighbour through refs, which the Phone
+// reads in the same frame to sync its screen.
 // ---------------------------------------------------------------------------
 
 type BooksProps = {
-  sliderRef: RefObject<Core | null>;
-  /** False holds the opening frame — no auto-rotation, no idle wobble —
-   *  which is exactly what the hero poster shows. */
+  /** False holds the opening frame — no auto-advance — which is exactly
+   *  what the hero poster shows. */
   playing: boolean;
   /** Integer index of the current 'front-facing' book. Written every frame
    *  by Books's useFrame; the Phone reads it inside its own useFrame so the
@@ -152,8 +159,8 @@ type BooksProps = {
    *  one-frame React-state lag). */
   centeredIndexRef?: RefObject<number>;
   /** Subframe progress between the previous and current front books in
-   *  [-0.5, +0.5]. Written every frame; the Phone reads it to animate the
-   *  inner book's slide-from-left transition in sync with the carousel. */
+   *  [-0.5, +0.5]. Written every frame; the Phone reads it to slide its
+   *  pages in sync with the carousel. */
   transitionRef?: RefObject<number>;
 };
 
@@ -176,12 +183,8 @@ function wrapToPi(a: number): number {
   return x;
 }
 
-function Books({
-  sliderRef,
-  playing,
-  centeredIndexRef,
-  transitionRef,
-}: BooksProps) {
+function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
+  const invalidate = useThree((s) => s.invalidate);
   const refs = useRef<(THREE.Group | null)[]>([]);
   // Ref to the outer <group> wrapping all books — receives the live carousel
   // transform (translate / rotate / scale) from PARAMS each frame so the
@@ -192,16 +195,23 @@ function Books({
   // frame inside each <Book>'s useFrame, so the fade tracks rotation without
   // React-state lag. The ref object itself is what gets passed down.
   const opacitiesRef = useRef<number[]>(COVERS.map(() => 1));
-  // Accumulator that drives the integer slider.target step. Every full
-  // unit of accumulator => one slider.target -= 1 nudge => one book advance.
-  const autoStepAccumRef = useRef(0);
-  // Clock for the idle wobble, started when playing begins so the first
-  // playing frame continues smoothly from the held opening frame (t = 0).
-  const playStartRef = useRef<number | null>(null);
+  // Carousel state, in books. nextStepAt is a performance.now() time, or 0
+  // while not auto-advancing.
+  const carouselRef = useRef({ position: 0, target: 0, nextStepAt: 0, easing: false });
+  const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useFrame((_, rawDelta) => {
-    const delta = Math.min(rawDelta, MAX_FRAME_DELTA);
+  // Starting (or stopping) play needs a frame to arm the step timer.
+  useEffect(() => {
+    invalidate();
+  }, [playing, invalidate]);
 
+  useEffect(() => {
+    return () => {
+      if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current);
+    };
+  }, []);
+
+  useFrame((state, rawDelta) => {
     // Apply carousel-group transform from PARAMS. Cheap to set every frame;
     // saves a re-render when tweakpane mutates the values.
     const cg = carouselGroupRef.current;
@@ -215,34 +225,47 @@ function Books({
       cg.scale.setScalar(PARAMS.carouselScale);
     }
 
-    const slider = sliderRef.current;
-    if (!slider) return;
-
-    slider.config.lerpFactor = PARAMS.lerpFactor;
-    slider.config.dragSensitivity = PARAMS.dragSensitivity;
-    slider.config.scrollSensitivity = PARAMS.scrollSensitivity;
-    slider.config.speedDecay = PARAMS.speedDecay;
-    slider.snap = PARAMS.snap;
-
-    // Auto-rotate: accumulate at PARAMS.autoCarouselSpeed books-per-second
-    // and trigger one integer step on `target` for each full unit. smooothy
-    // lerps `current` toward `target` so the steps feel continuous.
-    if (playing && PARAMS.autoCarousel && !slider.paused) {
-      autoStepAccumRef.current += delta * PARAMS.autoCarouselSpeed;
-      while (autoStepAccumRef.current >= 1) {
-        autoStepAccumRef.current -= 1;
-        slider.target -= 1;
+    // Auto-advance: one book per period, never more than one per frame, so
+    // a long pause (off-screen, background tab) can't queue up a whirl.
+    const c = carouselRef.current;
+    const now = performance.now();
+    const autoAdvance = playing && PARAMS.autoCarousel;
+    if (autoAdvance) {
+      const period = 1000 / Math.max(0.05, PARAMS.autoCarouselSpeed);
+      if (c.nextStepAt === 0) c.nextStepAt = now + period;
+      if (now >= c.nextStepAt) {
+        c.target -= 1;
+        c.nextStepAt = now + period;
       }
     } else {
-      autoStepAccumRef.current = 0;
+      c.nextStepAt = 0;
     }
-    slider.update();
+
+    // Ease towards the target (the same exponential ease smooothy used).
+    const delta = c.easing ? Math.min(rawDelta, MAX_FRAME_DELTA) : RESUME_DELTA;
+    c.position = THREE.MathUtils.damp(
+      c.position,
+      c.target,
+      1 / Math.max(0.02, PARAMS.lerpFactor),
+      delta,
+    );
+    if (Math.abs(c.target - c.position) < SETTLE_EPSILON) c.position = c.target;
+    c.easing = c.position !== c.target;
+
+    if (c.easing) {
+      state.invalidate();
+    } else if (autoAdvance && !wakeTimerRef.current) {
+      wakeTimerRef.current = setTimeout(() => {
+        wakeTimerRef.current = null;
+        state.invalidate();
+      }, Math.max(0, c.nextStepAt - now));
+    }
 
     // Determine the current "front" book (whose angle is closest to 0).
-    // angle_i = i*angleStep - slider.current*angleStep
-    // → angle_i ≈ 0 when (slider.current mod count) ≈ i.
+    // angle_i = i*angleStep - position*angleStep
+    // → angle_i ≈ 0 when (position mod count) ≈ i.
     const count = COVERS.length;
-    const wrapped = ((slider.current % count) + count) % count;
+    const wrapped = ((c.position % count) + count) % count;
     const idx = Math.round(wrapped) % count;
     // Distance from the nearest integer book — 0 means perfectly aligned,
     // 0.5 means we're exactly between two books.
@@ -254,14 +277,7 @@ function Books({
     // each facing outward along its radius.
     const angleStep = (Math.PI * 2) / count;
     const R = PARAMS.circleRadius;
-    const offsetAngle = slider.current * angleStep;
-    if (playing && playStartRef.current === null) {
-      playStartRef.current = performance.now();
-    }
-    const t =
-      playStartRef.current === null
-        ? 0
-        : (performance.now() - playStartRef.current) / 1000;
+    const offsetAngle = c.position * angleStep;
 
     // Front-arc opacity band, in radians. Front FULL_BOOKS = full alpha,
     // FADE_WIDTH_BOOKS = linear fade band on either side, everything past
@@ -278,30 +294,19 @@ function Books({
       const x = Math.sin(angle) * R;
       const z = Math.cos(angle) * R;
 
-      // All books render at the same bookWidth × bookHeight × bookDepth
-      // — per-book aspect-ratio variance is intentionally disabled so the
-      // row reads uniform.
-      // Ground-align: each book's bottom edge sits on GROUND_Y (flex-end
-      // on the y axis). No idle-bob animation — books stand still.
-      const halfH = PARAMS.bookHeight / 2;
-      const y = GROUND_Y + halfH;
+      // All books share one size, and stand on GROUND_Y (their bottom edge
+      // on the floor).
+      const y = GROUND_Y + PARAMS.bookHeight / 2;
       // Negate the angle component so each book's spine (its "tail" — the
       // -X local face) rotates to face the OUTER side of the fan and the
       // open edge swings toward the carousel center. Cover faces stay
-      // tilted more directly toward the camera as a side-effect.
-      const ry =
-        -angle +
-        PARAMS.rotationY +
-        Math.sin(i * 1.31 + t * 0.1) * PARAMS.rotationVariance;
-      const rz =
-        (Math.sin(i * 1.7) * Math.PI) / 200 +
-        Math.sin(t * 0.5 + i * 0.4) * 0.01;
+      // tilted more directly toward the camera as a side-effect. A small
+      // fixed per-book lean keeps the row from looking machine-placed.
+      const ry = -angle + PARAMS.rotationY + Math.sin(i * 1.31) * PARAMS.rotationVariance;
+      const rz = (Math.sin(i * 1.7) * Math.PI) / 200;
 
       node.position.set(x, y, z);
       node.rotation.set(0, ry, rz);
-      // Reset to uniform scale so books that had per-frame scale on the
-      // previous tick get normalised back to identity.
-      node.scale.set(1, 1, 1);
 
       // Opacity: 1 while inside ±fullHalf, linearly down to 0 over
       // fadeWidth, then 0 beyond. fadeWidth = 0 collapses to a hard
@@ -346,6 +351,46 @@ function CameraRig() {
       camera.updateProjectionMatrix();
     }
     camera.lookAt(0, 0, 0);
+  });
+  return null;
+}
+
+/**
+ * Image-based lighting from three's RoomEnvironment — a small procedural
+ * studio (light panels in a box), prefiltered once. It gives the phone's
+ * metal frame and glass something to reflect and the book covers soft,
+ * directional fill, with no HDR download.
+ */
+function StudioEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const get = useThree((s) => s.get);
+
+  useEffect(() => {
+    let target: THREE.WebGLRenderTarget | null = null;
+    const build = () => {
+      target?.dispose();
+      const pmrem = new THREE.PMREMGenerator(gl);
+      const room = new RoomEnvironment();
+      target = pmrem.fromScene(room, 0.04);
+      room.dispose();
+      pmrem.dispose();
+      get().scene.environment = target.texture;
+      get().invalidate();
+    };
+    build();
+    // A lost WebGL context takes the prefiltered map with it; rebuild it
+    // once three.js has restored the context (its own listener runs first).
+    const canvas = gl.domElement;
+    canvas.addEventListener("webglcontextrestored", build);
+    return () => {
+      canvas.removeEventListener("webglcontextrestored", build);
+      get().scene.environment = null;
+      target?.dispose();
+    };
+  }, [gl, get]);
+
+  useFrame(({ scene }) => {
+    scene.environmentIntensity = PARAMS.envIntensity;
   });
   return null;
 }
@@ -417,6 +462,20 @@ function FirstFrame({ onFrame }: { onFrame: () => void }) {
   return null;
 }
 
+/**
+ * Bridges on-demand rendering to the outside world: requests from outside
+ * the frame loop (textures filling in, tweakpane), and a fresh frame
+ * whenever `wake` changes (the scene coming back on screen).
+ */
+function FrameRequests({ wake }: { wake: unknown }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => onFrameRequest(invalidate), [invalidate]);
+  useEffect(() => {
+    invalidate();
+  }, [wake, invalidate]);
+  return null;
+}
+
 type BookSceneProps = {
   /** Called with true once the scene is drawn and fading in over the
    *  poster, and with false if it stops being visible (WebGL context lost). */
@@ -425,16 +484,15 @@ type BookSceneProps = {
 
 export function BookScene({ onLiveChange }: BookSceneProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<Core | null>(null);
 
   // Refs read by Phone every frame so the texture swap + slide stay in
   // perfect lockstep with the carousel (no React-state-vs-useFrame race).
   const centeredIndexRef = useRef<number>(0);
   const transitionRef = useRef<number>(0);
 
-  // Render only while the hero is on screen — the scene animates every
-  // frame, and there's no reason to keep the GPU busy below the fold.
+  // Render only while the hero is on screen. On screen, frames are drawn on
+  // demand — while the carousel eases, the phone follows the mouse, or a
+  // texture changes — so the GPU idles between book changes.
   const [inView, setInView] = useState(true);
   // Fade-in gate: first frame drawn + cover images in (or timed out).
   const [firstFrame, setFirstFrame] = useState(false);
@@ -442,23 +500,6 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
   const [contextLost, setContextLost] = useState(false);
   // True once the fade over the poster has finished; motion starts then.
   const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    if (!hostRef.current) return;
-    const inst = new Core(hostRef.current, {
-      infinite: true,
-      snap: PARAMS.snap,
-      scrollInput: PARAMS.scrollInput,
-      lerpFactor: PARAMS.lerpFactor,
-      dragSensitivity: PARAMS.dragSensitivity,
-      speedDecay: PARAMS.speedDecay,
-    });
-    sliderRef.current = inst;
-    return () => {
-      inst.destroy();
-      sliderRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -503,32 +544,18 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
         ready ? "opacity-100" : "opacity-0",
       )}
     >
-      {/* Invisible smooothy host. Carousel is driven entirely by the per-frame
-       *  target nudge inside Books's useFrame; we still need a DOM wrapper
-       *  for Core to read measurements from. */}
-      <div
-        ref={hostRef}
-        data-slider
-        className="absolute inset-0 z-0 flex overflow-hidden opacity-0 pointer-events-none"
-      >
-        {COVERS.map((_, i) => (
-          <div
-            key={i}
-            style={{ width: SLIDE_PX, flexShrink: 0, height: "100%" }}
-          />
-        ))}
-      </div>
-
       <Canvas
-        frameloop={inView ? "always" : "never"}
+        frameloop={inView ? "demand" : "never"}
         dpr={[1, 2]}
         camera={{
           position: [PARAMS.camX, PARAMS.camY, PARAMS.camZ],
           fov: PARAMS.fov,
         }}
         // Transparent: the hero's icon pattern shows through instead of
-        // stopping in a hard line at the canvas edge.
-        gl={{ antialias: true, alpha: true }}
+        // stopping in a hard line at the canvas edge. Neutral tone mapping
+        // keeps the book covers' printed colours true (ACES shifts and
+        // desaturates them).
+        gl={{ antialias: true, alpha: true, toneMapping: THREE.NeutralToneMapping }}
         onCreated={({ gl }) => {
           // three.js restores a lost context by itself; meanwhile the
           // poster covers for the blank canvas.
@@ -541,6 +568,8 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
         }}
         className="!absolute inset-0"
       >
+        <FrameRequests wake={inView} />
+        <StudioEnvironment />
         <LiveFog />
         <CameraRig />
         <LiveLights />
@@ -548,7 +577,6 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
 
         <Suspense fallback={null}>
           <Books
-            sliderRef={sliderRef}
             playing={playing}
             centeredIndexRef={centeredIndexRef}
             transitionRef={transitionRef}

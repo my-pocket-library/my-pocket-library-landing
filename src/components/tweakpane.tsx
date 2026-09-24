@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Pane } from "tweakpane";
+import { requestFrame } from "@/lib/scene-frame";
 import { PARAMS, type SceneParams } from "@/lib/scene-params";
 
 // Tweakpane v4 ships incomplete public types for addFolder / addBinding
@@ -16,6 +17,7 @@ type Folder = {
 };
 type PaneLike = Folder & {
   addFolder: (cfg: { title: string; expanded?: boolean }) => Folder;
+  on: (event: "change", cb: () => void) => void;
   dispose: () => void;
 };
 
@@ -41,31 +43,16 @@ export function Tweakpane() {
       expanded: false,
     }) as unknown as PaneLike;
     paneRef.current = pane;
+    // The scene renders on demand; a knob change needs a fresh frame.
+    pane.on("change", requestFrame);
 
     const carousel = pane.addFolder({ title: "Carousel", expanded: false });
     carousel.addBinding(PARAMS, "lerpFactor", { min: 0.02, max: 1, step: 0.01 });
-    carousel.addBinding(PARAMS, "dragSensitivity", {
-      min: 0.0005,
-      max: 0.02,
-      step: 0.0005,
-    });
-    carousel.addBinding(PARAMS, "scrollSensitivity", {
-      min: 0.1,
-      max: 4,
-      step: 0.05,
-    });
-    carousel.addBinding(PARAMS, "speedDecay", {
-      min: 0.5,
-      max: 0.99,
-      step: 0.01,
-    });
-    carousel.addBinding(PARAMS, "snap");
-    carousel.addBinding(PARAMS, "scrollInput");
     carousel.addBinding(PARAMS, "autoCarousel");
     carousel.addBinding(PARAMS, "autoCarouselSpeed", {
-      min: -2,
+      min: 0.05,
       max: 2,
-      step: 0.02,
+      step: 0.01,
     });
 
     const carouselTransform = pane.addFolder({
@@ -156,6 +143,8 @@ export function Tweakpane() {
     scene.addBinding(PARAMS, "fogFar", { min: 4, max: 60, step: 0.5 });
 
     const lights = pane.addFolder({ title: "Lights", expanded: false });
+    lights.addBinding(PARAMS, "envIntensity", { min: 0, max: 3, step: 0.05 });
+    lights.addBinding(PARAMS, "shadowOpacity", { min: 0, max: 1, step: 0.01 });
     lights.addBinding(PARAMS, "ambient", { min: 0, max: 3, step: 0.05 });
     lights.addBinding(PARAMS, "keyIntensity", { min: 0, max: 5, step: 0.05 });
     lights.addBinding(PARAMS, "keyX", { min: -10, max: 10, step: 0.1 });

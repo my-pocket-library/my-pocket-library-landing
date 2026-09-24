@@ -4,6 +4,7 @@ import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three-stdlib";
+import { requestFrame } from "@/lib/scene-frame";
 import { PARAMS } from "@/lib/scene-params";
 
 export type BookCover = {
@@ -423,10 +424,12 @@ function getCoverTextures(cover: BookCover, wear: number): CoverTextures {
       (img) => {
         ctx?.drawImage(img, 0, 0, coverCanvas.width, coverCanvas.height);
         coverTex.needsUpdate = true;
+        requestFrame();
       },
       () => {
         paintCover(coverCanvas, cover, wear);
         coverTex.needsUpdate = true;
+        requestFrame();
       },
     );
   } else {
@@ -447,6 +450,7 @@ function getCoverTextures(cover: BookCover, wear: number): CoverTextures {
   document.fonts?.ready.then(() => {
     paintSpine(spineCanvas, cover);
     spineTex.needsUpdate = true;
+    requestFrame();
   });
 
   const textures = { cover: coverTex, spine: spineTex };
@@ -662,228 +666,261 @@ function bowCoverGeometry(
   geom.computeVertexNormals();
 }
 
+// ---------------------------------------------------------------------------
+// Draw-call budget
+//
+// Each piece's six faces used to be six material groups — 24 draw calls per
+// book. The front board, back board and spine are merged into one "shell"
+// geometry grouped by material instead (5 draws), and the page block's faces
+// are regrouped into its two materials (2 draws).
+// ---------------------------------------------------------------------------
+
+/** Shell material slots. */
+const SHELL = { edge: 0, inner: 1, front: 2, back: 3, spine: 4 } as const;
+const SHELL_MATERIALS = 5;
+
+// Per-face shell material for each piece, in BoxGeometry face order
+// (+X, -X, +Y, -Y, +Z, -Z — RoundedBoxGeometry keeps it):
+//   front board at +Z: +Z = cover art, -Z = inner (faces the paper)
+//   back board  at -Z: -Z = back cover, +Z = inner (faces the paper)
+//   spine       at -X: -X = spine art, +X and ±Z = inner, ±Y = edge
+// Everything else is the binding-cloth edge strip.
+const FRONT_FACES = [SHELL.edge, SHELL.edge, SHELL.edge, SHELL.edge, SHELL.front, SHELL.inner];
+const BACK_FACES = [SHELL.edge, SHELL.edge, SHELL.edge, SHELL.edge, SHELL.inner, SHELL.back];
+const SPINE_FACES = [SHELL.inner, SHELL.spine, SHELL.edge, SHELL.edge, SHELL.inner, SHELL.inner];
+
+/** Merge geometries into one, with one group per target material. Works
+ *  for indexed and non-indexed inputs (RoundedBoxGeometry is non-indexed:
+ *  its groups then count vertices rather than indices). */
+function mergeByMaterial(
+  parts: { geometry: THREE.BufferGeometry; faceMaterials: readonly number[] }[],
+  materialCount: number,
+): THREE.BufferGeometry {
+  const vertexCount = parts.reduce((n, p) => n + p.geometry.attributes.position.count, 0);
+  const position = new Float32Array(vertexCount * 3);
+  const normal = new Float32Array(vertexCount * 3);
+  const uv = new Float32Array(vertexCount * 2);
+  const byMaterial: number[][] = Array.from({ length: materialCount }, () => []);
+
+  let offset = 0;
+  for (const { geometry, faceMaterials } of parts) {
+    const a = geometry.attributes;
+    position.set(a.position.array as Float32Array, offset * 3);
+    normal.set(a.normal.array as Float32Array, offset * 3);
+    uv.set(a.uv.array as Float32Array, offset * 2);
+    const index = geometry.index?.array;
+    for (const group of geometry.groups) {
+      const target = byMaterial[faceMaterials[group.materialIndex ?? 0]];
+      for (let i = group.start; i < group.start + group.count; i++) {
+        target.push((index ? index[i] : i) + offset);
+      }
+    }
+    offset += a.position.count;
+  }
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute("position", new THREE.BufferAttribute(position, 3));
+  merged.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
+  merged.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  const index: number[] = [];
+  byMaterial.forEach((triangles, material) => {
+    merged.addGroup(index.length, triangles.length, material);
+    for (const i of triangles) index.push(i);
+  });
+  merged.setIndex(index);
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Contact shadow
+//
+// A soft dark footprint on the ground under each book, so the books stand on
+// something instead of floating over the page. One textured quad per book —
+// far cheaper than a real shadow pass — that fades with its book.
+// ---------------------------------------------------------------------------
+
+/** How far the shadow spreads past the book's footprint, in world units. */
+const SHADOW_SPREAD = 0.28;
+
+let shadowTexture: THREE.CanvasTexture | null = null;
+
+/** Soft rounded-rectangle falloff, sized in world units to the book. */
+function getShadowTexture(w: number, d: number) {
+  if (shadowTexture) return shadowTexture;
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const img = ctx.createImageData(size, size);
+    const halfW = w / 2 + SHADOW_SPREAD;
+    const halfD = d / 2 + SHADOW_SPREAD;
+    // Distance outside the footprint, eased to zero over SHADOW_SPREAD.
+    const falloff = (distance: number) => {
+      const t = Math.min(1, Math.max(0, distance / SHADOW_SPREAD));
+      return 1 - t * t * (3 - 2 * t);
+    };
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = Math.abs(((x + 0.5) / size) * 2 - 1) * halfW - w / 2;
+        const dz = Math.abs(((y + 0.5) / size) * 2 - 1) * halfD - d / 2;
+        const outside = Math.hypot(Math.max(0, dx), Math.max(0, dz));
+        const alpha = falloff(outside);
+        img.data[(y * size + x) * 4 + 3] = Math.round(alpha * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  shadowTexture = new THREE.CanvasTexture(canvas);
+  return shadowTexture;
+}
+
 export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
-  // The hardcover model uses four separate meshes — front board, back board,
-  // spine, and paper block — instead of the old single-cover + single-paper
-  // setup. This is what lets the page block sit visibly recessed inside the
-  // cover (the boards' top/bottom/open-edge faces don't exist as cover panels,
-  // so the air around the smaller paper block is genuinely visible).
-  const frontBoardRef = useRef<THREE.Mesh>(null);
-  const backBoardRef = useRef<THREE.Mesh>(null);
-  const spineRef = useRef<THREE.Mesh>(null);
-  const paperMeshRef = useRef<THREE.Mesh>(null);
+  // The hardcover model: front board, back board and spine (merged into one
+  // "shell" mesh) around a smaller paper block. The boards' top, bottom and
+  // open-edge faces are thin strips, so the recessed page block is genuinely
+  // visible around them.
+  const shellRef = useRef<THREE.Mesh>(null);
+  const paperRef = useRef<THREE.Mesh>(null);
+  const shadowRef = useRef<THREE.Mesh>(null);
   const prepassRefs = useRef<(THREE.Mesh | null)[]>([]);
   const sizeRef = useRef<[number, number, number]>([0, 0, 0]);
 
-  // Materials per face order: +X, -X, +Y, -Y, +Z, -Z.
-  //
-  // The cover is now THREE separate pieces (front board, back board, spine),
-  // each with its own material array. Each piece's *outer* face carries the
-  // cover artwork; everything else is either coverEdge (the visible thin
-  // strips along the board's edges where the binding cloth wraps around)
-  // or innerEdge (interior faces that face the page block and are mostly
-  // occluded — kept dark so any peek-through reads as binding lining).
-  //
-  //   frontBoard at +Z:  +Z = cover art,        -Z = innerEdge (faces paper)
-  //   backBoard  at -Z:  -Z = back cover,       +Z = innerEdge (faces paper)
-  //   spine      at -X:  -X = spine artwork,    +X = innerEdge (faces paper)
-  //                      ±Z = innerEdge (seam where spine meets boards)
-  //
-  // All board side-strips (+X / ±Y) and the spine's ±Y use coverEdge.
-  const standardMaterials = useMemo(() => {
+  const materials = useMemo(() => {
     const { cover: coverTex, spine: spineTex } = getCoverTextures(
       cover,
       getWearAmount(index),
     );
     const { pages: pagesTex, edge: pagesEdgeTex } = getPageTextures();
 
-    // All materials are flat colour/texture only — no normal maps. Books
-    // render as plain printed objects, not embossed ones.
-    const pages = new THREE.MeshStandardMaterial({
-      map: pagesTex,
-      roughness: 0.95,
-    });
-    // Same paper material but using the rotated texture, for the open-edge
-    // face where page lines need to run vertically.
-    const pagesEdge = new THREE.MeshStandardMaterial({
-      map: pagesEdgeTex,
-      roughness: 0.95,
-    });
-    const spineMat = new THREE.MeshStandardMaterial({
-      map: spineTex,
-      roughness: 0.75,
-    });
-    const front = new THREE.MeshStandardMaterial({
-      map: coverTex,
-      roughness: 0.78,
-    });
+    // Flat colour/texture only — no normal maps. Covers and spines get a
+    // little gloss (laminated jackets), so the studio environment slides a
+    // soft highlight across them as the carousel turns; paper stays matte.
+    const front = new THREE.MeshStandardMaterial({ map: coverTex, roughness: 0.52 });
     const back = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cover.baseColor).multiplyScalar(0.42),
-      roughness: 0.85,
+      roughness: 0.6,
     });
-    // Cover edge — the binding cloth/paper wrapping around the thin sides of
-    // the boards. Slightly darker than the cover face so it reads as a fold.
-    const coverEdge = new THREE.MeshStandardMaterial({
+    const spine = new THREE.MeshStandardMaterial({ map: spineTex, roughness: 0.55 });
+    // The binding cloth wrapping round the boards' thin sides — a little
+    // darker than the cover so it reads as a fold.
+    const edge = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cover.baseColor).multiplyScalar(0.75),
-      roughness: 0.85,
+      roughness: 0.7,
     });
-    // Inner faces — heavily darkened so the recess between cover and pages
-    // reads as ambient-occluded shadow even without runtime shadow rendering.
-    const innerEdge = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(cover.baseColor).multiplyScalar(0.30),
+    // Inner faces facing the page block, mostly hidden — dark, so any
+    // peek-through reads as the binding's shadowed lining.
+    const inner = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cover.baseColor).multiplyScalar(0.3),
       roughness: 0.95,
     });
+    // Paper: the open edge (±X) uses the rotated texture so page lines run
+    // vertically; top/bottom (and the hidden ±Z) use the upright one.
+    const pagesEdge = new THREE.MeshStandardMaterial({ map: pagesEdgeTex, roughness: 0.95 });
+    const pages = new THREE.MeshStandardMaterial({ map: pagesTex, roughness: 0.95 });
 
-    // Face order: +X, -X, +Y, -Y, +Z, -Z
-    return {
-      // Front board: +Z is the cover. -Z faces the paper block (innerEdge).
-      // Sides are all visible thin strips of binding (coverEdge).
-      frontBoard: [coverEdge, coverEdge, coverEdge, coverEdge, front, innerEdge],
-      // Back board: -Z is the back cover, +Z faces the paper block.
-      backBoard:  [coverEdge, coverEdge, coverEdge, coverEdge, innerEdge, back],
-      // Spine: -X is the spine artwork, +X faces the paper block. ±Z meet
-      // the boards' inner faces in a seam (innerEdge — same colour, no
-      // visible z-fighting). ±Y are the visible top/bottom of the spine.
-      spine:      [innerEdge, spineMat, coverEdge, coverEdge, innerEdge, innerEdge],
-      // Paper — multi-material so the open-edge face gets the rotated
-      // texture (vertical page lines), while top/bottom faces use the
-      // upright texture (horizontal page lines parallel to the spine).
-      // Face order: +X, -X, +Y, -Y, +Z, -Z.
-      paper: [pagesEdge, pagesEdge, pages, pages, pages, pages],
-    };
+    const shadow = new THREE.MeshBasicMaterial({
+      map: getShadowTexture(PARAMS.bookWidth, PARAMS.bookDepth),
+      color: 0x000000,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    const shell: THREE.Material[] = [];
+    shell[SHELL.edge] = edge;
+    shell[SHELL.inner] = inner;
+    shell[SHELL.front] = front;
+    shell[SHELL.back] = back;
+    shell[SHELL.spine] = spine;
+    return { shell, paper: [pagesEdge, pages], shadow };
   }, [cover, index]);
 
   // Materials are per instance (textures are shared and cached above).
   useEffect(() => {
-    const all = new Set([
-      ...standardMaterials.frontBoard,
-      ...standardMaterials.backBoard,
-      ...standardMaterials.spine,
-      ...standardMaterials.paper,
-    ]);
     return () => {
-      for (const material of all) material.dispose();
+      for (const material of [...materials.shell, ...materials.paper, materials.shadow]) {
+        material.dispose();
+      }
     };
-  }, [standardMaterials]);
+  }, [materials]);
 
-  // Imperatively swap geometry size each frame so tweakpane edits to
-  // bookWidth/Height/Depth don't require React re-renders (which caused
-  // flickering on the carousel).
+  // Geometry is rebuilt imperatively when the book size changes (tweakpane),
+  // instead of through React re-renders, which flickered the carousel.
   useFrame(() => {
-    const frontBoard = frontBoardRef.current;
-    const backBoard = backBoardRef.current;
-    const spineMesh = spineRef.current;
-    const paperMesh = paperMeshRef.current;
-    if (!frontBoard || !backBoard || !spineMesh || !paperMesh) return;
+    const shell = shellRef.current;
+    const paper = paperRef.current;
+    const shadow = shadowRef.current;
+    if (!shell || !paper || !shadow) return;
 
     const [lw, lh, ld] = sizeRef.current;
-    if (
-      lw !== PARAMS.bookWidth ||
-      lh !== PARAMS.bookHeight ||
-      ld !== PARAMS.bookDepth
-    ) {
+    if (lw !== PARAMS.bookWidth || lh !== PARAMS.bookHeight || ld !== PARAMS.bookDepth) {
       const w = PARAMS.bookWidth;
       const h = PARAMS.bookHeight;
       const d = PARAMS.bookDepth;
       const layout = bookLayout(w, h, d);
 
-      // Corner radii: the cover boards get a small chamfer matching the old
-      // cover's rounding; the paper block gets a *smaller* radius so its
-      // corners read as crisp paper edges rather than soft cover-board curves
-      // (one of the user-requested differences from cover geometry).
+      // Boards get a small chamfer; the spine a rounder one; the paper block
+      // a tighter radius so its corners read as crisp paper edges.
       const coverRadius = Math.min(w, h, d) * 0.06;
-      const paperRadius =
-        Math.min(layout.paper.w, layout.paper.h, layout.paper.d) * 0.025;
-      const spineRadius = Math.min(layout.spine.d, layout.spine.w) * 0.20;
+      const spineRadius = Math.min(layout.spine.d, layout.spine.w) * 0.2;
+      const paperRadius = Math.min(layout.paper.w, layout.paper.h, layout.paper.d) * 0.025;
 
-      // Front board: thin rounded slab on +Z. Bow only its outer (+Z) face
-      // so the front cover swells outward without punching the inner face
-      // back into the recessed page block.
-      frontBoard.geometry.dispose();
-      const frontGeom = new RoundedBoxGeometry(
-        layout.frontBoard.w,
-        layout.frontBoard.h,
-        layout.frontBoard.d,
-        3,
-        coverRadius,
-      );
+      // Front and back boards bow outward on their outer face only, so the
+      // cover swells without punching into the page block. Spines are flat.
+      const frontGeom = new RoundedBoxGeometry(layout.frontBoard.w, layout.frontBoard.h, layout.frontBoard.d, 3, coverRadius);
       bowCoverGeometry(frontGeom, d * COVER_BOW_FRAC, "front");
-      frontBoard.geometry = frontGeom;
-      frontBoard.position.set(
-        layout.frontBoard.x,
-        layout.frontBoard.y,
-        layout.frontBoard.z,
-      );
-
-      // Back board: mirror of the front. Bow its outer (-Z) face only.
-      backBoard.geometry.dispose();
-      const backGeom = new RoundedBoxGeometry(
-        layout.backBoard.w,
-        layout.backBoard.h,
-        layout.backBoard.d,
-        3,
-        coverRadius,
-      );
+      frontGeom.translate(layout.frontBoard.x, layout.frontBoard.y, layout.frontBoard.z);
+      const backGeom = new RoundedBoxGeometry(layout.backBoard.w, layout.backBoard.h, layout.backBoard.d, 3, coverRadius);
       bowCoverGeometry(backGeom, d * COVER_BOW_FRAC, "back");
-      backBoard.geometry = backGeom;
-      backBoard.position.set(
-        layout.backBoard.x,
-        layout.backBoard.y,
-        layout.backBoard.z,
-      );
+      backGeom.translate(layout.backBoard.x, layout.backBoard.y, layout.backBoard.z);
+      const spineGeom = new RoundedBoxGeometry(layout.spine.w, layout.spine.h, layout.spine.d, 3, spineRadius);
+      spineGeom.translate(layout.spine.x, layout.spine.y, layout.spine.z);
 
-      // Spine: thin slab on -X, occupying the binding edge between the two
-      // boards' inner faces. No bow — real spines are flat or sewn-flat.
-      spineMesh.geometry.dispose();
-      spineMesh.geometry = new RoundedBoxGeometry(
-        layout.spine.w,
-        layout.spine.h,
-        layout.spine.d,
-        3,
-        spineRadius,
+      shell.geometry.dispose();
+      shell.geometry = mergeByMaterial(
+        [
+          { geometry: frontGeom, faceMaterials: FRONT_FACES },
+          { geometry: backGeom, faceMaterials: BACK_FACES },
+          { geometry: spineGeom, faceMaterials: SPINE_FACES },
+        ],
+        SHELL_MATERIALS,
       );
-      spineMesh.position.set(layout.spine.x, layout.spine.y, layout.spine.z);
+      frontGeom.dispose();
+      backGeom.dispose();
+      spineGeom.dispose();
 
-      // Paper block: smaller than the cover on every axis, recessed inside
-      // the assembly. Tighter corner radius so it reads as a stack of paper
-      // sheets, not a cover board.
-      paperMesh.geometry.dispose();
-      paperMesh.geometry = new RoundedBoxGeometry(
-        layout.paper.w,
-        layout.paper.h,
-        layout.paper.d,
-        2,
-        paperRadius,
-      );
-      paperMesh.position.set(layout.paper.x, layout.paper.y, layout.paper.z);
+      // Page block: faces 0–1 (±X) are the open edge, 2–5 the rest — each
+      // run is contiguous in the index, so two groups cover it.
+      const paperGeom = new RoundedBoxGeometry(layout.paper.w, layout.paper.h, layout.paper.d, 2, paperRadius);
+      const [px, nx] = paperGeom.groups;
+      const edgeCount = px.count + nx.count;
+      const total = paperGeom.index?.count ?? paperGeom.attributes.position.count;
+      paperGeom.clearGroups();
+      paperGeom.addGroup(0, edgeCount, 0);
+      paperGeom.addGroup(edgeCount, total - edgeCount, 1);
+      paper.geometry.dispose();
+      paper.geometry = paperGeom;
+      paper.position.set(layout.paper.x, layout.paper.y, layout.paper.z);
+
+      // Shadow quad on the ground under the book (the plane is 1×1).
+      shadow.scale.set(w + SHADOW_SPREAD * 2, d + SHADOW_SPREAD * 2, 1);
+      shadow.position.set(0, -h / 2 + 0.002, 0);
 
       sizeRef.current = [w, h, d];
     }
 
-    // Materials are now always the PBR (MeshStandardMaterial) set — toon
-    // shading was removed. The mesh `material` prop in the JSX below
-    // already points at standardMaterials.*, so nothing to swap per frame.
+    // Optional inner page block (off = hollow shells), with per-axis scale
+    // on top of the layout size, so the tweakpane knobs need no rebuild.
+    paper.visible = PARAMS.bookPagesEnabled;
+    paper.scale.set(PARAMS.bookPagesScaleX, PARAMS.bookPagesScaleY, PARAMS.bookPagesScaleZ);
 
-    // Visibility toggle for the inner paper block. Skipping the mesh
-    // entirely (instead of just hiding via opacity) means zero draw calls
-    // when the user wants books to read as hollow shells.
-    paperMesh.visible = PARAMS.bookPagesEnabled;
-
-    // Per-axis scale multipliers on top of the layout-derived paper size,
-    // applied via mesh.scale so we don't have to rebuild the geometry
-    // whenever the user drags the knob.
-    paperMesh.scale.set(
-      PARAMS.bookPagesScaleX,
-      PARAMS.bookPagesScaleY,
-      PARAMS.bookPagesScaleZ,
-    );
-
-    // Apply per-book fade opacity to every material across all four meshes,
-    // and run the depth pre-pass while the book is mid-fade.
+    // Per-book fade: every material, the shadow, and the depth pre-pass
+    // that keeps a fading book solid.
     const op = opacitiesRef?.current?.[index] ?? 1;
     const fading = op < 0.999;
-    const meshes = [frontBoard, backBoard, spineMesh, paperMesh];
-    meshes.forEach((mesh, i) => {
+    [shell, paper].forEach((mesh, i) => {
       for (const material of mesh.material as THREE.Material[]) {
         applyOpacity(material, op);
       }
@@ -895,43 +932,34 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
       prepass.position.copy(mesh.position);
       prepass.scale.copy(mesh.scale);
     });
+    (shadow.material as THREE.MeshBasicMaterial).opacity = PARAMS.shadowOpacity * op;
   });
 
-  // R3F only disposes the placeholder <boxGeometry> children it created; the
-  // RoundedBoxGeometries swapped in above are ours. The mesh objects live as
-  // long as this component, so capture them now and dispose whatever
-  // geometry each holds at unmount.
+  // R3F only disposes the placeholder geometries it created; the ones
+  // swapped in above are ours. The meshes live as long as this component,
+  // so capture them now and dispose whatever geometry each holds at unmount.
   useEffect(() => {
-    const meshes = [
-      frontBoardRef.current,
-      backBoardRef.current,
-      spineRef.current,
-      paperMeshRef.current,
-    ];
+    const meshes = [shellRef.current, paperRef.current];
     return () => {
       for (const mesh of meshes) mesh?.geometry.dispose();
     };
   }, []);
 
-  // Initial placeholder geometries — useFrame replaces them with the proper
-  // bookLayout()-sized RoundedBoxGeometries on first tick. The four
-  // pre-pass meshes borrow those geometries (dispose={null}: the book
-  // meshes own them).
+  // Placeholder geometries — useFrame replaces them with the proper
+  // bookLayout()-sized ones on the first tick. The pre-pass meshes borrow
+  // those geometries (dispose={null}: the book meshes own them).
   return (
     <group>
-      <mesh ref={frontBoardRef} material={standardMaterials.frontBoard} renderOrder={1}>
+      <mesh ref={shellRef} material={materials.shell} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh ref={backBoardRef} material={standardMaterials.backBoard} renderOrder={1}>
+      <mesh ref={paperRef} material={materials.paper} renderOrder={1}>
         <boxGeometry args={[1, 1, 1]} />
       </mesh>
-      <mesh ref={spineRef} material={standardMaterials.spine} renderOrder={1}>
-        <boxGeometry args={[1, 1, 1]} />
+      <mesh ref={shadowRef} material={materials.shadow} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[1, 1]} />
       </mesh>
-      <mesh ref={paperMeshRef} material={standardMaterials.paper} renderOrder={1}>
-        <boxGeometry args={[1, 1, 1]} />
-      </mesh>
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1].map((i) => (
         <mesh
           key={i}
           ref={(el: THREE.Mesh | null) => {
