@@ -319,15 +319,15 @@ function paintBookContent(canvas: HTMLCanvasElement, cover: BookCover) {
 
 type PhoneProps = {
   covers: BookCover[];
-  /** False when the visitor prefers reduced motion: no mouse parallax. */
-  animate: boolean;
+  /** Follow the mouse. Off while the scene holds its opening frame. */
+  parallax: boolean;
   centeredIndexRef: RefObject<number>;
   transitionRef: RefObject<number>;
 };
 
 export function Phone({
   covers,
-  animate,
+  parallax,
   centeredIndexRef,
   transitionRef,
 }: PhoneProps) {
@@ -408,7 +408,7 @@ export function Phone({
 
   // Live transform driven by PARAMS so the tweakpane can move/scale the
   // phone without re-renders.
-  useFrame(() => {
+  useFrame((_, delta) => {
     const g = rootRef.current;
     if (!g) return;
     g.visible = PARAMS.phoneEnabled;
@@ -421,16 +421,21 @@ export function Phone({
     // X-axis pitch follows mouse-y (negate mouseY because browser y
     // grows DOWN — so "cursor below centre" should pitch the phone-top
     // toward the viewer, not away).
-    const parallax = animate && PARAMS.phoneMouseRotation;
-    const targetPitch = parallax
+    const follow = parallax && PARAMS.phoneMouseRotation;
+    const targetPitch = follow
       ? -mouseRef.current.y * PARAMS.phoneMouseStrengthX
       : 0;
-    const targetYaw = parallax
+    const targetYaw = follow
       ? mouseRef.current.x * PARAMS.phoneMouseStrengthY
       : 0;
-    const lerp = Math.max(0, Math.min(1, PARAMS.phoneMouseLerp));
-    mouseRotRef.current.x += (targetPitch - mouseRotRef.current.x) * lerp;
-    mouseRotRef.current.y += (targetYaw - mouseRotRef.current.y) * lerp;
+    // phoneMouseLerp is tuned as a per-frame factor at 60 fps; converting
+    // it to a rate and damping by elapsed time keeps the easing the same
+    // speed on 120 Hz screens instead of twice as fast.
+    const lerp = Math.min(0.999, Math.max(0.001, PARAMS.phoneMouseLerp));
+    const rate = -Math.log(1 - lerp) * 60;
+    const m = mouseRotRef.current;
+    m.x = THREE.MathUtils.damp(m.x, targetPitch, rate, delta);
+    m.y = THREE.MathUtils.damp(m.y, targetYaw, rate, delta);
 
     g.rotation.set(
       PARAMS.phoneRotX + mouseRotRef.current.x,
@@ -561,21 +566,11 @@ function AppShell() {
   );
 }
 
-// Slide amplitude in inner-ortho X for the active book plane. The widest
-// content drawn by paintBookContent is the title/author card (78% of plane
-// width → half-width ≈ 0.78 × ORTHO_HALF_W). At `frac = ±0.5` the plane sits
-// at ∓INNER_SLIDE_AMPLITUDE, which puts the card edge past the screen edge
-// — so the texture swap that fires at the boundary happens with nothing of
-// the active book visible, making the swap invisible.
-//
-// The slide is intentionally NOT tied to the outer carousel arc anymore:
-// matching that arc made the plane only reach ±0.535 at the boundary,
-// which left the card half-visible at the swap moment (the original
-// "disappear mid-screen" glitch). Decoupling lets us pick an amplitude
-// large enough to actually clear the frustum.
-const CARD_PLANE_FRACTION = 0.78;
-const CARD_HALF_W = ORTHO_HALF_W * CARD_PLANE_FRACTION;
-const INNER_SLIDE_AMPLITUDE = ORTHO_HALF_W + CARD_HALF_W + 0.04;
+// Distance between neighbouring books on the phone screen, in inner-scene
+// units: just under one screen width. Mid-change more of both books stays
+// on screen, while a page waiting at rest (card 78% of the width, plus its
+// shadow) still sits fully off the edge.
+const PAGE_STRIDE = ORTHO_HALF_W * 2 * 0.95;
 
 function BookContent({
   covers,
@@ -586,9 +581,10 @@ function BookContent({
   centeredIndexRef: RefObject<number>;
   transitionRef: RefObject<number>;
 }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
-  const currentIdxRef = useRef<number>(-1);
+  // Two pages: the book the carousel is leaving and the one it's heading
+  // to. They slide together, so the screen always shows at least one book.
+  const pageRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const pageBooksRef = useRef<number[]>([-1, -1]);
 
   // Pre-build all per-book content textures up front so the swap on index
   // change is a pointer assignment — no allocation, no GPU upload mid-frame.
@@ -634,44 +630,48 @@ function BookContent({
   }, [contentTextures]);
 
   useFrame(() => {
-    const g = groupRef.current;
-    const mat = materialRef.current;
-    if (!g || !mat) return;
+    // Continuous carousel position, in books: the centred index plus how
+    // far it is towards its neighbour.
+    const count = contentTextures.length;
+    const position = (centeredIndexRef.current ?? 0) + (transitionRef.current ?? 0);
+    const base = Math.floor(position);
+    const t = position - base;
 
-    // Swap the active book's content texture if the carousel's centered
-    // index changed since the last frame. Because the slide formula below
-    // puts the plane fully off-screen at `frac = ±0.5`, this swap fires
-    // when no content is visible — invisible to the user.
-    const idx = centeredIndexRef.current ?? 0;
-    if (idx !== currentIdxRef.current) {
-      currentIdxRef.current = idx;
-      mat.map = contentTextures[idx] ?? null;
-      mat.needsUpdate = true;
+    // Page 0 shows book `base`, page 1 the next one. At t = 0 page 0 is
+    // centred; as the auto-rotation walks the position down, the current
+    // book exits to the right and the next one enters from the left — the
+    // same direction the books behind the phone turn.
+    for (let i = 0; i < 2; i++) {
+      const page = pageRefs.current[i];
+      if (!page) continue;
+      const book = (((base + i) % count) + count) % count;
+      const material = page.material as THREE.MeshBasicMaterial;
+      if (pageBooksRef.current[i] !== book) {
+        pageBooksRef.current[i] = book;
+        material.map = contentTextures[book] ?? null;
+        material.needsUpdate = true;
+      }
+      const x = (i - t) * PAGE_STRIDE;
+      page.position.x = x;
+      // A slight tilt mid-slide, flat at rest — both centred and waiting
+      // off-screen, where a tilt would swing a corner into view.
+      page.rotation.z = -Math.sin((Math.PI * x) / PAGE_STRIDE) * 0.1;
     }
-
-    // Sine-eased slide along x. sin(frac × π) maps frac ∈ [-0.5, +0.5] to
-    // [-1, +1]; multiplied by INNER_SLIDE_AMPLITUDE gives the plane center.
-    // Negated so the active book slides in the same direction as the outer
-    // carousel does (the outer auto-rotation decrements slider, so the
-    // active book exits to the right and the next one enters from the
-    // left). Sine easing decelerates near the boundary, which is exactly
-    // where we want the slide to be unhurried — the texture swap there
-    // benefits from the plane being mostly still.
-    const frac = transitionRef.current ?? 0;
-    g.position.x = -Math.sin(frac * Math.PI) * INNER_SLIDE_AMPLITUDE;
-    g.rotation.z = frac * 0.12;
   });
 
   return (
-    <group ref={groupRef}>
-      <mesh>
-        <planeGeometry args={[ORTHO_HALF_W * 2, ORTHO_HALF_H * 2]} />
-        <meshBasicMaterial
-          ref={materialRef}
-          transparent
-          toneMapped={false}
-        />
-      </mesh>
-    </group>
+    <>
+      {[0, 1].map((i) => (
+        <mesh
+          key={i}
+          ref={(el: THREE.Mesh | null) => {
+            pageRefs.current[i] = el;
+          }}
+        >
+          <planeGeometry args={[ORTHO_HALF_W * 2, ORTHO_HALF_H * 2]} />
+          <meshBasicMaterial transparent toneMapped={false} />
+        </mesh>
+      ))}
+    </>
   );
 }

@@ -2,15 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { AppStoreBadge } from "@/components/app-store-badge";
-
-// three.js + R3F are ~290 KB gzipped. Loading the scene as its own chunk
-// keeps it out of the initial bundle, so the page is interactive first.
-// The box below keeps its height meanwhile (no layout shift) and the scene
-// fades in once it has drawn (see BookScene).
-const BookScene = dynamic(
-  () => import("@/components/book-scene").then((m) => m.BookScene),
-  { ssr: false },
-);
+import { HeroScene } from "@/components/hero-scene";
 
 // Dev-only live controls for the scene; never part of a production build.
 const Tweakpane = dynamic(
@@ -23,9 +15,7 @@ export function Hero() {
     <section className="relative isolate flex min-h-svh flex-col overflow-hidden bg-ana-1">
       <RadialPattern />
 
-      <div className="pointer-events-none relative order-2 h-[360px] w-full shrink-0 md:h-[460px] lg:h-[520px]">
-        <BookScene />
-      </div>
+      <HeroScene />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center px-6 pt-28 text-center md:pt-36">
         <h1 className="font-serif text-balance text-[clamp(2.5rem,10vw,3rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-7xl">
