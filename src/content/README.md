@@ -15,5 +15,8 @@ on September 19, 2026. The privacy policy was brought up to its last app
 version on September 24, 2026 (cover photos, books added to the catalogue,
 report visibility, "Your requests"), with the likes wording corrected to match
 the September 23 change that lets anyone who can see an activity like it.
+On September 29, 2026 it gained what blocking now does: the blocker keeps the
+conversation, the blocked reader keeps only their own messages and is told
+they are blocked.
 
 FAQ and support copy (`faq.mdx`, `support.mdx`) is based on these documents.
