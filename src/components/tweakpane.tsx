@@ -49,11 +49,6 @@ export function Tweakpane() {
     const carousel = pane.addFolder({ title: "Carousel", expanded: false });
     carousel.addBinding(PARAMS, "lerpFactor", { min: 0.02, max: 1, step: 0.01 });
     carousel.addBinding(PARAMS, "autoCarousel");
-    carousel.addBinding(PARAMS, "autoCarouselSpeed", {
-      min: 0.05,
-      max: 2,
-      step: 0.01,
-    });
 
     const carouselTransform = pane.addFolder({
       title: "Carousel Transform",

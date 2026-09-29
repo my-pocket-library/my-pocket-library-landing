@@ -26,6 +26,8 @@ pnpm build && pnpm start
 | Policy effective dates | `src/app/privacy/page.tsx`, `src/app/terms/page.tsx` |
 | Sitemap dates | `src/app/sitemap.ts` |
 | 3D hero (books + phone) | `src/components/book-scene.tsx`, `book.tsx`, `phone.tsx`, tuning in `src/lib/scene-params.ts` |
+| Hero books (title, author, ISBN-13 for the barcode, cover) | `BOOKS` in `src/components/book-scene.tsx` |
+| The phone's scan ceremony (app screens and beat timings) | `src/components/phone-screen.tsx`, `src/lib/scan-ceremony.ts` |
 | Book cover images (768px tall) | `public/images/` |
 | Hero posters (the scene's opening frame) | `public/hero/scene-{sm,md,lg}.webp` |
 | Link-preview image (1200×630) | `public/og.jpg` |
