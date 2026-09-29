@@ -10,6 +10,9 @@ import { PARAMS } from "@/lib/scene-params";
 export type BookCover = {
   title: string;
   author?: string;
+  /** ISBN-13 (valid check digit): the barcode the phone's camera reads and
+   *  the "Looking up 9780…" the scan pill shows. */
+  isbn: string;
   baseColor: string;
   accent: string;
   ink: string;
@@ -32,6 +35,11 @@ export type BookProps = {
    *  Read inside this component's useFrame so the fade stays in lockstep
    *  with position updates (no React-state lag). */
   opacitiesRef?: RefObject<number[]>;
+  /** Per-book height above the ground in world units, indexed like
+   *  `opacitiesRef` — the parent raises a hovered book by this much. The
+   *  contact shadow stays on the ground, softer and wider the higher the
+   *  book is. */
+  liftsRef?: RefObject<number[]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -776,7 +784,7 @@ function getShadowTexture(w: number, d: number) {
   return shadowTexture;
 }
 
-export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
+export function Book({ cover, index = 0, opacitiesRef, liftsRef }: BookProps) {
   // The hardcover model: front board, back board and spine (merged into one
   // "shell" mesh) around a smaller paper block. The boards' top, bottom and
   // open-edge faces are thin strips, so the recessed page block is genuinely
@@ -854,11 +862,11 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
     const shadow = shadowRef.current;
     if (!shell || !paper || !shadow) return;
 
+    const w = PARAMS.bookWidth;
+    const h = PARAMS.bookHeight;
+    const d = PARAMS.bookDepth;
     const [lw, lh, ld] = sizeRef.current;
-    if (lw !== PARAMS.bookWidth || lh !== PARAMS.bookHeight || ld !== PARAMS.bookDepth) {
-      const w = PARAMS.bookWidth;
-      const h = PARAMS.bookHeight;
-      const d = PARAMS.bookDepth;
+    if (lw !== w || lh !== h || ld !== d) {
       const layout = bookLayout(w, h, d);
 
       // Boards get a small chamfer; the spine a rounder one; the paper block
@@ -904,12 +912,15 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
       paper.geometry = paperGeom;
       paper.position.set(layout.paper.x, layout.paper.y, layout.paper.z);
 
-      // Shadow quad on the ground under the book (the plane is 1×1).
-      shadow.scale.set(w + SHADOW_SPREAD * 2, d + SHADOW_SPREAD * 2, 1);
-      shadow.position.set(0, -h / 2 + 0.002, 0);
-
       sizeRef.current = [w, h, d];
     }
+
+    // Shadow quad on the ground under the book (the plane is 1×1). A lifted
+    // book leaves it on the ground, spread wider and fainter.
+    const lift = liftsRef?.current?.[index] ?? 0;
+    const spread = 1 + lift * 1.2;
+    shadow.scale.set((w + SHADOW_SPREAD * 2) * spread, (d + SHADOW_SPREAD * 2) * spread, 1);
+    shadow.position.set(0, -h / 2 + 0.002 - lift, 0);
 
     // Optional inner page block (off = hollow shells), with per-axis scale
     // on top of the layout size, so the tweakpane knobs need no rebuild.
@@ -932,7 +943,8 @@ export function Book({ cover, index = 0, opacitiesRef }: BookProps) {
       prepass.position.copy(mesh.position);
       prepass.scale.copy(mesh.scale);
     });
-    (shadow.material as THREE.MeshBasicMaterial).opacity = PARAMS.shadowOpacity * op;
+    (shadow.material as THREE.MeshBasicMaterial).opacity =
+      (PARAMS.shadowOpacity * op) / (1 + lift * 4);
   });
 
   // R3F only disposes the placeholder geometries it created; the ones

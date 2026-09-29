@@ -12,7 +12,15 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Book, type BookCover, loadCoverImage } from "./book";
 import { Phone } from "./phone";
-import { onFrameRequest } from "@/lib/scene-frame";
+import type { ScanShared } from "./phone-screen";
+import {
+  AIM_DWELL,
+  CYCLE,
+  DETECT_AT,
+  RESULT_AT,
+  screenActivity,
+} from "@/lib/scan-ceremony";
+import { onFrameRequest, requestFrame } from "@/lib/scene-frame";
 import { PARAMS } from "@/lib/scene-params";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +33,7 @@ const BOOKS: BookCover[] = [
   {
     title: "The Trial",
     author: "Franz Kafka",
+    isbn: "9780805209990",
     baseColor: "#1a1a1a",
     accent: "#c4a052",
     ink: "#e8d49a",
@@ -34,6 +43,7 @@ const BOOKS: BookCover[] = [
   {
     title: "The Hobbit",
     author: "J.R.R. Tolkien",
+    isbn: "9780261102217",
     baseColor: "#1f3a2a",
     accent: "#c9a35a",
     ink: "#e8d6a8",
@@ -43,6 +53,7 @@ const BOOKS: BookCover[] = [
   {
     title: "The Catcher in the Rye",
     author: "J.D. Salinger",
+    isbn: "9780316769488",
     baseColor: "#8a1f1f",
     accent: "#f5e7c8",
     ink: "#f7eddd",
@@ -52,6 +63,7 @@ const BOOKS: BookCover[] = [
   {
     title: "Intermezzo",
     author: "Sally Rooney",
+    isbn: "9780571365463",
     baseColor: "#e8c84a",
     accent: "#1a1a1a",
     ink: "#1a1a1a",
@@ -61,6 +73,7 @@ const BOOKS: BookCover[] = [
   {
     title: "Atomic Habits",
     author: "James Clear",
+    isbn: "9780735211292",
     baseColor: "#f4a821",
     accent: "#1a1a1a",
     ink: "#1a1a1a",
@@ -70,6 +83,7 @@ const BOOKS: BookCover[] = [
   {
     title: "The Great Gatsby",
     author: "F. Scott Fitzgerald",
+    isbn: "9780743273565",
     // Iconic Francis Cugat dark-blue + orange/yellow palette.
     baseColor: "#16264a",
     accent: "#e8a23c",
@@ -80,6 +94,7 @@ const BOOKS: BookCover[] = [
   {
     title: "Rüyaların Çağrısı",
     author: "Katia Haviters",
+    isbn: "9786257612340",
     baseColor: "#2a3d5c",
     accent: "#d4b87a",
     ink: "#ead49a",
@@ -89,6 +104,7 @@ const BOOKS: BookCover[] = [
   {
     title: "It",
     author: "Stephen King",
+    isbn: "9781501142970",
     // Pennywise red on near-white — matches the classic mass-market jacket.
     baseColor: "#f4ede0",
     accent: "#c8331f",
@@ -99,6 +115,7 @@ const BOOKS: BookCover[] = [
   {
     title: "Sapiens",
     author: "Yuval Noah Harari",
+    isbn: "9780099590088",
     // Cream cover with red thumbprint accent — Harari's English edition.
     baseColor: "#efe4c8",
     accent: "#9c2018",
@@ -138,30 +155,87 @@ const COVER_WAIT_MS = 1500;
 const FADE_MS = 700;
 
 // ---------------------------------------------------------------------------
-// Books — auto-advancing circular carousel.
+// Books — the carousel, and the director that runs the scan ceremony.
 //
-// The carousel position is a number of books: the target steps down by one
-// every 1 / autoCarouselSpeed seconds and the position eases toward it with
-// a time constant of lerpFactor seconds. The scene renders on demand, so
-// frames are requested only while the position is still easing; between
-// steps a timer wakes the loop for the next one. Books exposes the centred
-// book and the progress towards its neighbour through refs, which the Phone
-// reads in the same frame to sync its screen.
+// The carousel position is a number of books (book i is in front when the
+// position ≡ i mod count), easing toward an integer target with a time
+// constant of lerpFactor seconds. The director plays the app's scan
+// ceremony on the phone (scan-ceremony.ts) for whichever book is in front:
+// each cycle it steps the carousel to the next book, and while the visitor
+// drags the shelf or taps a book it switches the phone to aiming, then
+// scans the book that lands in front. The scene renders on demand, so the
+// director requests frames only while something moves and otherwise sets a
+// timer for the next beat.
 // ---------------------------------------------------------------------------
 
+/** The first cycle holds the opening sheet a little longer. */
+const FIRST_HOLD = 1;
+/** After a visitor-started scan, the result stays up this much longer. */
+const USER_HOLD = 2.5;
+/** How far a hovered book rises off the shelf, in world units. */
+const HOVER_LIFT = 0.14;
+
+/** Shared between the wrapper's pointer handlers and the frame loop. */
+export type SceneControl = {
+  carousel: {
+    position: number;
+    target: number;
+    easing: boolean;
+    /** The target came from the visitor (drag, tap), not the director. */
+    userDriven: boolean;
+  };
+  director: {
+    mode: "timeline" | "aiming";
+    /** performance.now() at t = 0 of the current cycle. */
+    cycleStart: number;
+    /** When this cycle hands over to the next book, in seconds. */
+    cycleLength: number;
+    book: number;
+    previousBook: number;
+  };
+  drag: {
+    pointerId: number;
+    active: boolean;
+    startX: number;
+    startY: number;
+    startPosition: number;
+    /** Recent pointer samples, for the release fling. */
+    samples: { x: number; time: number }[];
+  };
+  /** Book under the mouse, or -1. A hovered book holds the shelf: the
+   *  next book waits until the mouse leaves it. */
+  hovered: number;
+  /** The mouse is over the scene (hover is re-checked as books move). */
+  mouseInside: boolean;
+  /** Books per pixel of horizontal drag (set from the canvas height). */
+  booksPerPixel: number;
+};
+
+export function createSceneControl(): SceneControl {
+  return {
+    carousel: { position: 0, target: 0, easing: false, userDriven: false },
+    director: {
+      mode: "timeline",
+      cycleStart: 0,
+      cycleLength: CYCLE + FIRST_HOLD,
+      book: 0,
+      previousBook: 0,
+    },
+    drag: { pointerId: -1, active: false, startX: 0, startY: 0, startPosition: 0, samples: [] },
+    hovered: -1,
+    mouseInside: false,
+    booksPerPixel: 1 / 150,
+  };
+}
+
 type BooksProps = {
-  /** False holds the opening frame — no auto-advance — which is exactly
-   *  what the hero poster shows. */
+  /** False holds the opening frame (the first book's finished sheet), which
+   *  is exactly what the hero poster shows. */
   playing: boolean;
-  /** Integer index of the current 'front-facing' book. Written every frame
-   *  by Books's useFrame; the Phone reads it inside its own useFrame so the
-   *  texture swap happens in the same frame as the position update (no
-   *  one-frame React-state lag). */
-  centeredIndexRef?: RefObject<number>;
-  /** Subframe progress between the previous and current front books in
-   *  [-0.5, +0.5]. Written every frame; the Phone reads it to slide its
-   *  pages in sync with the carousel. */
-  transitionRef?: RefObject<number>;
+  controlRef: RefObject<SceneControl>;
+  sharedRef: RefObject<ScanShared>;
+  /** Cursor for the wrapper: over a book, dragging, or neither. */
+  onCursor: (cursor: "grab" | "grabbing" | "pointer") => void;
 };
 
 // Front-of-fan visibility. 5 books at full opacity (centre + ±2), with a
@@ -183,8 +257,11 @@ function wrapToPi(a: number): number {
   return x;
 }
 
-function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
+function Books({ playing, controlRef, sharedRef, onCursor }: BooksProps) {
   const invalidate = useThree((s) => s.invalidate);
+  const canvasHeight = useThree((s) => s.size.height);
   const refs = useRef<(THREE.Group | null)[]>([]);
   // Ref to the outer <group> wrapping all books — receives the live carousel
   // transform (translate / rotate / scale) from PARAMS each frame so the
@@ -195,12 +272,19 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
   // frame inside each <Book>'s useFrame, so the fade tracks rotation without
   // React-state lag. The ref object itself is what gets passed down.
   const opacitiesRef = useRef<number[]>(COVERS.map(() => 1));
-  // Carousel state, in books. nextStepAt is a performance.now() time, or 0
-  // while not auto-advancing.
-  const carouselRef = useRef({ position: 0, target: 0, nextStepAt: 0, easing: false });
+  // Per-book hover lift in world units, read by each <Book> for its shadow.
+  const liftsRef = useRef<number[]>(COVERS.map(() => 0));
+  const liftingRef = useRef(false);
+  const startedRef = useRef(false);
   const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Starting (or stopping) play needs a frame to arm the step timer.
+  // A front book moves ~0.29 × the canvas height per book step, so dragging
+  // that far turns the shelf by one book — the books follow the finger.
+  useEffect(() => {
+    controlRef.current.booksPerPixel = 1 / (0.29 * canvasHeight);
+  }, [controlRef, canvasHeight]);
+
+  // Starting play needs a frame to start the clock.
   useEffect(() => {
     invalidate();
   }, [playing, invalidate]);
@@ -211,67 +295,92 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
     };
   }, []);
 
+  /** Turn the shelf the short way round until book i is in front. */
+  const bringToFront = (i: number) => {
+    const { carousel, director } = controlRef.current;
+    const count = COVERS.length;
+    const offset = mod(i - carousel.position + count / 2, count) - count / 2;
+    carousel.target = Math.round(carousel.position + offset);
+    carousel.userDriven = true;
+    director.mode = "aiming";
+    invalidate();
+  };
+
   useFrame((state, rawDelta) => {
-    // Apply carousel-group transform from PARAMS. Cheap to set every frame;
-    // saves a re-render when tweakpane mutates the values.
     const cg = carouselGroupRef.current;
     if (cg) {
       cg.position.set(PARAMS.carouselX, PARAMS.carouselY, PARAMS.carouselZ);
-      cg.rotation.set(
-        PARAMS.carouselRotX,
-        PARAMS.carouselRotY,
-        PARAMS.carouselRotZ,
-      );
+      cg.rotation.set(PARAMS.carouselRotX, PARAMS.carouselRotY, PARAMS.carouselRotZ);
       cg.scale.setScalar(PARAMS.carouselScale);
     }
 
-    // Auto-advance: one book per period, never more than one per frame, so
-    // a long pause (off-screen, background tab) can't queue up a whirl.
-    const c = carouselRef.current;
+    const { carousel: c, director: d, drag } = controlRef.current;
     const now = performance.now();
-    const autoAdvance = playing && PARAMS.autoCarousel;
-    if (autoAdvance) {
-      const period = 1000 / Math.max(0.05, PARAMS.autoCarouselSpeed);
-      if (c.nextStepAt === 0) c.nextStepAt = now + period;
-      if (now >= c.nextStepAt) {
-        c.target -= 1;
-        c.nextStepAt = now + period;
-      }
-    } else {
-      c.nextStepAt = 0;
-    }
-
-    // Ease towards the target (the same exponential ease smooothy used).
-    const delta = c.easing ? Math.min(rawDelta, MAX_FRAME_DELTA) : RESUME_DELTA;
-    c.position = THREE.MathUtils.damp(
-      c.position,
-      c.target,
-      1 / Math.max(0.02, PARAMS.lerpFactor),
-      delta,
-    );
-    if (Math.abs(c.target - c.position) < SETTLE_EPSILON) c.position = c.target;
-    c.easing = c.position !== c.target;
-
-    if (c.easing) {
-      state.invalidate();
-    } else if (autoAdvance && !wakeTimerRef.current) {
-      wakeTimerRef.current = setTimeout(() => {
-        wakeTimerRef.current = null;
-        state.invalidate();
-      }, Math.max(0, c.nextStepAt - now));
-    }
-
-    // Determine the current "front" book (whose angle is closest to 0).
-    // angle_i = i*angleStep - position*angleStep
-    // → angle_i ≈ 0 when (position mod count) ≈ i.
     const count = COVERS.length;
-    const wrapped = ((c.position % count) + count) % count;
-    const idx = Math.round(wrapped) % count;
-    // Distance from the nearest integer book — 0 means perfectly aligned,
-    // 0.5 means we're exactly between two books.
-    const frac = wrapped - Math.round(wrapped); // [-0.5, +0.5]
-    if (transitionRef) transitionRef.current = frac;
-    if (centeredIndexRef) centeredIndexRef.current = idx;
+
+    // Carousel: close behind the pointer while dragging, otherwise the
+    // exponential ease (the same one smooothy used). The first frame after
+    // an idle stretch reports the whole pause as its delta, so it steps from
+    // a nominal frame instead.
+    const delta = c.easing ? Math.min(rawDelta, MAX_FRAME_DELTA) : RESUME_DELTA;
+    const rate = drag.active ? 30 : 1 / Math.max(0.02, PARAMS.lerpFactor);
+    c.position = THREE.MathUtils.damp(c.position, c.target, rate, delta);
+    if (!drag.active && Math.abs(c.target - c.position) < SETTLE_EPSILON) {
+      c.position = c.target;
+    }
+    c.easing = drag.active || c.position !== c.target;
+    const front = mod(Math.round(c.position), count);
+
+    // R3F hit-tests only when the pointer moves, so while the shelf turns
+    // under a resting mouse, re-run hover against its last position.
+    if (c.easing && !drag.active && controlRef.current.mouseInside) {
+      state.events.update?.();
+    }
+    const held = controlRef.current.hovered !== -1;
+
+    // Director.
+    if (drag.active || (c.userDriven && c.easing)) {
+      d.mode = "aiming";
+    } else if (d.mode === "aiming") {
+      // The shelf settled after a drag or a tap: scan the book in front.
+      d.mode = "timeline";
+      d.previousBook = d.book;
+      d.book = front;
+      d.cycleStart = now - (DETECT_AT - AIM_DWELL) * 1000;
+      d.cycleLength = CYCLE + USER_HOLD;
+      c.userDriven = false;
+    }
+
+    let t: number;
+    if (!playing) {
+      // Hold the opening frame: the first book's finished sheet.
+      startedRef.current = false;
+      t = RESULT_AT;
+    } else {
+      // Play picks up from the opening frame, however long it was held.
+      if (!startedRef.current) {
+        startedRef.current = true;
+        d.cycleStart = now - RESULT_AT * 1000;
+      }
+      t = (now - d.cycleStart) / 1000;
+      if (d.mode === "timeline" && PARAMS.autoCarousel && !held && t >= d.cycleLength) {
+        // Next book: the shelf turns while the sheet slides away.
+        c.target = Math.round(c.target) - 1;
+        c.easing = true;
+        d.previousBook = d.book;
+        d.book = mod(c.target, count);
+        d.cycleStart = now;
+        d.cycleLength = CYCLE;
+        t = 0;
+      }
+    }
+
+    const shared = sharedRef.current;
+    shared.mode = d.mode;
+    shared.t = t;
+    shared.book = d.book;
+    shared.previousBook = d.previousBook;
+    shared.feedBook = d.mode === "aiming" ? front : d.book;
 
     // Layout: distribute books around a horizontal circle in the xz-plane,
     // each facing outward along its radius.
@@ -285,6 +394,9 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
     const fullHalf = (FULL_BOOKS / 2) * angleStep;
     const fadeWidth = FADE_WIDTH_BOOKS * angleStep;
     const opacities = opacitiesRef.current;
+    const lifts = liftsRef.current;
+    const liftDelta = liftingRef.current ? Math.min(rawDelta, MAX_FRAME_DELTA) : RESUME_DELTA;
+    let lifting = false;
 
     for (let i = 0; i < count; i++) {
       const node = refs.current[i];
@@ -294,9 +406,15 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
       const x = Math.sin(angle) * R;
       const z = Math.cos(angle) * R;
 
+      // A hovered book rises a little off the shelf.
+      const liftTarget = controlRef.current.hovered === i ? HOVER_LIFT : 0;
+      lifts[i] = THREE.MathUtils.damp(lifts[i], liftTarget, 14, liftDelta);
+      if (Math.abs(lifts[i] - liftTarget) < 1e-4) lifts[i] = liftTarget;
+      else lifting = true;
+
       // All books share one size, and stand on GROUND_Y (their bottom edge
-      // on the floor).
-      const y = GROUND_Y + PARAMS.bookHeight / 2;
+      // on the floor) unless lifted.
+      const y = GROUND_Y + PARAMS.bookHeight / 2 + lifts[i];
       // Negate the angle component so each book's spine (its "tail" — the
       // -X local face) rotates to face the OUTER side of the fan and the
       // open edge swings toward the carousel center. Cover faces stay
@@ -325,6 +443,30 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
       // Hard cull when invisible — skips all draw calls for back-half books.
       node.visible = opacity > 0.001;
     }
+
+    liftingRef.current = lifting;
+
+    // Frames: keep drawing while anything moves; otherwise sleep until the
+    // ceremony's next beat or the next book, whichever comes first. Each
+    // frame re-arms the timer, so it always holds the nearest deadline.
+    if (wakeTimerRef.current) {
+      clearTimeout(wakeTimerRef.current);
+      wakeTimerRef.current = null;
+    }
+    const timeline = playing && d.mode === "timeline";
+    const activity = timeline ? screenActivity(t) : { moving: false, wakeIn: Infinity };
+    if (c.easing || lifting || activity.moving) {
+      state.invalidate();
+    } else if (timeline) {
+      const nextBookIn = PARAMS.autoCarousel && !held ? d.cycleLength - t : Infinity;
+      const wakeIn = Math.min(activity.wakeIn, nextBookIn);
+      if (wakeIn < Infinity) {
+        wakeTimerRef.current = setTimeout(() => {
+          wakeTimerRef.current = null;
+          state.invalidate();
+        }, Math.max(0, wakeIn * 1000));
+      }
+    }
   });
 
   return (
@@ -335,13 +477,36 @@ function Books({ playing, centeredIndexRef, transitionRef }: BooksProps) {
           ref={(el: THREE.Group | null) => {
             refs.current[i] = el;
           }}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            if (e.nativeEvent.pointerType !== "mouse") return;
+            if (opacitiesRef.current[i] < 0.5 || controlRef.current.drag.active) return;
+            controlRef.current.hovered = i;
+            onCursor("pointer");
+            invalidate();
+          }}
+          onPointerOut={() => {
+            if (controlRef.current.hovered !== i) return;
+            controlRef.current.hovered = -1;
+            onCursor(controlRef.current.drag.active ? "grabbing" : "grab");
+            invalidate();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            // A drag that ends over a book is not a tap.
+            if (e.delta > DRAG_SLOP || opacitiesRef.current[i] < 0.5) return;
+            bringToFront(i);
+          }}
         >
-          <Book cover={cover} index={i} opacitiesRef={opacitiesRef} />
+          <Book cover={cover} index={i} opacitiesRef={opacitiesRef} liftsRef={liftsRef} />
         </group>
       ))}
     </group>
   );
 }
+
+/** Pixels a pointer may travel and still count as a tap. */
+const DRAG_SLOP = 6;
 
 function CameraRig() {
   useFrame(({ camera }) => {
@@ -484,15 +649,18 @@ type BookSceneProps = {
 
 export function BookScene({ onLiveChange }: BookSceneProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // Refs read by Phone every frame so the texture swap + slide stay in
-  // perfect lockstep with the carousel (no React-state-vs-useFrame race).
-  const centeredIndexRef = useRef<number>(0);
-  const transitionRef = useRef<number>(0);
+  const controlRef = useRef<SceneControl>(createSceneControl());
+  const sharedRef = useRef<ScanShared>({
+    mode: "timeline",
+    t: RESULT_AT,
+    book: 0,
+    previousBook: 0,
+    feedBook: 0,
+  });
 
   // Render only while the hero is on screen. On screen, frames are drawn on
-  // demand — while the carousel eases, the phone follows the mouse, or a
-  // texture changes — so the GPU idles between book changes.
+  // demand — while the carousel eases, the phone plays a beat of the scan
+  // ceremony or follows the mouse, or a texture changes.
   const [inView, setInView] = useState(true);
   // Fade-in gate: first frame drawn + cover images in (or timed out).
   const [firstFrame, setFirstFrame] = useState(false);
@@ -535,13 +703,84 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
     return () => clearTimeout(timer);
   }, [ready, onLiveChange]);
 
+  const setCursor = (cursor: "grab" | "grabbing" | "pointer") => {
+    if (wrapperRef.current) wrapperRef.current.style.cursor = cursor;
+  };
+
+  // Drag or swipe to spin the shelf. Horizontal only: `touch-action: pan-y`
+  // leaves vertical swipes to the page, and a gesture that starts out more
+  // vertical than horizontal is never claimed.
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!playing || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const { drag, carousel } = controlRef.current;
+    drag.pointerId = e.pointerId;
+    drag.active = false;
+    drag.startX = e.clientX;
+    drag.startY = e.clientY;
+    drag.startPosition = carousel.position;
+    drag.samples = [{ x: e.clientX, time: e.timeStamp }];
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const { drag, carousel, director } = controlRef.current;
+    if (e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.active) {
+      if (Math.abs(dy) > DRAG_SLOP && Math.abs(dy) > Math.abs(dx)) {
+        drag.pointerId = -1; // a scroll, not ours
+        return;
+      }
+      if (Math.abs(dx) <= DRAG_SLOP) return;
+      drag.active = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      controlRef.current.hovered = -1;
+      setCursor("grabbing");
+    }
+    carousel.target = drag.startPosition - dx * controlRef.current.booksPerPixel;
+    carousel.userDriven = true;
+    director.mode = "aiming";
+    drag.samples.push({ x: e.clientX, time: e.timeStamp });
+    if (drag.samples.length > 6) drag.samples.shift();
+    requestFrame();
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>, fling: boolean) => {
+    const { drag, carousel } = controlRef.current;
+    if (e.pointerId !== drag.pointerId) return;
+    drag.pointerId = -1;
+    if (!drag.active) return;
+    drag.active = false;
+    // Release: carry the fling for a quarter of a second, then settle on
+    // the nearest book — which the phone then scans.
+    const first = drag.samples[0];
+    const last = drag.samples[drag.samples.length - 1];
+    const seconds = Math.max(0.016, (last.time - first.time) / 1000);
+    const velocity = fling ? (last.x - first.x) / seconds : 0;
+    carousel.target = Math.round(carousel.target - velocity * 0.25 * controlRef.current.booksPerPixel);
+    setCursor("grab");
+    requestFrame();
+  };
+
   return (
     <div
       ref={wrapperRef}
       aria-hidden
+      onPointerEnter={(e) => {
+        if (e.pointerType === "mouse") controlRef.current.mouseInside = true;
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === "mouse") controlRef.current.mouseInside = false;
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => endDrag(e, true)}
+      onPointerCancel={(e) => endDrag(e, false)}
+      onDragStart={(e) => e.preventDefault()}
+      style={{ touchAction: "pan-y", cursor: "grab" }}
       className={cn(
-        "relative h-full w-full transition-opacity duration-700 ease-out motion-reduce:transition-none",
-        ready ? "opacity-100" : "opacity-0",
+        "relative h-full w-full select-none transition-opacity duration-700 ease-out motion-reduce:transition-none",
+        ready ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
     >
       <Canvas
@@ -566,6 +805,7 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
             setContextLost(false),
           );
         }}
+        style={{ touchAction: "pan-y" }}
         className="!absolute inset-0"
       >
         <FrameRequests wake={inView} />
@@ -578,15 +818,11 @@ export function BookScene({ onLiveChange }: BookSceneProps) {
         <Suspense fallback={null}>
           <Books
             playing={playing}
-            centeredIndexRef={centeredIndexRef}
-            transitionRef={transitionRef}
+            controlRef={controlRef}
+            sharedRef={sharedRef}
+            onCursor={setCursor}
           />
-          <Phone
-            covers={COVERS}
-            parallax={playing}
-            centeredIndexRef={centeredIndexRef}
-            transitionRef={transitionRef}
-          />
+          <Phone covers={COVERS} parallax={playing} sharedRef={sharedRef} />
         </Suspense>
       </Canvas>
     </div>

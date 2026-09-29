@@ -6,8 +6,7 @@
 export type SceneParams = {
   // Carousel motion
   lerpFactor: number; // ease time constant per book step, in seconds
-  autoCarousel: boolean; // auto-advance one book at a time
-  autoCarouselSpeed: number; // books advanced per second
+  autoCarousel: boolean; // step to the next book after each scan
 
   // Books
   bookWidth: number;
@@ -81,7 +80,6 @@ export type SceneParams = {
 export const PARAMS: SceneParams = {
   lerpFactor: 0.3,
   autoCarousel: true,
-  autoCarouselSpeed: 0.3,
 
   bookWidth: 1.20,
   bookHeight: 1.75,
