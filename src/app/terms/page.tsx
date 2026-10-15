@@ -12,7 +12,7 @@ export const metadata: Metadata = pageMetadata({
 
 export default function PolicyPage() {
   return (
-    <LegalPage title="Terms of Use" effectiveDate="September 19, 2026">
+    <LegalPage title="Terms of Use" effectiveDate="October 14, 2026">
       <PolicyContent />
     </LegalPage>
   );

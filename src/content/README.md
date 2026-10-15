@@ -17,6 +17,10 @@ report visibility, "Your requests"), with the likes wording corrected to match
 the September 23 change that lets anyone who can see an activity like it.
 On September 29, 2026 it gained what blocking now does: the blocker keeps the
 conversation, the blocked reader keeps only their own messages and is told
-they are blocked.
+they are blocked. On October 14, 2026 both documents gained the App Review
+moderation work: book clubs can be reported and blocked in, shared text is
+filtered before it posts, new photos are screened by Cloud Vision, operators
+can remove reported content and suspend an account, and ISBNdb is named; the
+Terms' description of blocking was corrected to match the privacy policy.
 
 FAQ and support copy (`faq.mdx`, `support.mdx`) is based on these documents.
