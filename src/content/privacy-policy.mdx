@@ -16,20 +16,20 @@ We only collect what the app needs to work. We do not run advertising, analytics
 
 | What | Examples | Why we process it | Legal basis (GDPR Art. 6) |
 | --- | --- | --- | --- |
-| Account information | Email address, display name, username, Apple or Google authentication identifier | Creating your account and signing you in | Performance of a contract |
+| Account information | Email address, display name, username, Apple or Google authentication identifier, and, if you sign up with Google, your Google profile photo, which becomes your profile photo until you choose another | Creating your account and signing you in | Performance of a contract |
 | Library information | Book titles, authors, ISBNs, cover images, reading status, notes, shelf and location names, book format, borrow tracking, wishlist, reading activity dates | Saving and syncing your library across your devices | Performance of a contract |
-| Profile information | Profile photo, display name, username, badges | Showing you to friends you have connected with | Performance of a contract |
+| Profile information | Profile photo, display name, username, bio, shelf caption, badges, and whether you have Pro | Showing you to other readers. These are visible to, and searchable by, anyone signed in to Pocket Library, so readers can find you and send a friend request | Performance of a contract |
 | Friend and sharing data | Friend and book-borrow requests, friend records, activity likes, book club membership and invites, shared book loans (reader identities, public book details, request status, loan, due and return dates), the books you choose to make publicly visible | Operating friend, activity, profile, lending and book club features | Performance of a contract |
 | Direct messages | Message text, book cards you attach, reactions, timestamps, the time you last opened each conversation, and the participants of each conversation | Delivering messages between you and your friends, and showing each of you whether the other has read the conversation | Performance of a contract |
-| Push notification tokens | A per-device Firebase Cloud Messaging token | Sending you notifications you asked for | Consent, which you give in the iOS notification prompt and can withdraw in iOS Settings at any time |
-| Subscription status | Your Pro entitlement, purchase and renewal status, and an anonymous RevenueCat customer identifier tied to your account | Unlocking paid features and restoring purchases | Performance of a contract |
-| Moderation data | Readers you have blocked; any abuse report you file — its reason, your note, where you filed it (a conversation, a book club or a profile), and a snapshot of the reported reader's messages there; and, if we act on a report about you, what we did and a fingerprint (hash) of profile text or a photo we removed, so the same one cannot be put back. Reports are read only by the Pocket Library operator, never by other readers, and the reported reader is not told who reported them. | Acting on reports and keeping blocks in force | Our legitimate interest in a safe service, and compliance with our legal obligations |
+| Push notification tokens | A per-device Firebase Cloud Messaging token, stored only while notifications are allowed for the app | Sending you notifications you asked for | Consent, which you give in the iOS notification prompt and can withdraw in iOS Settings at any time |
+| Subscription status | Your Pro entitlement, purchase and renewal status, and your account's user ID, which is how RevenueCat keeps your purchases with your account. RevenueCat receives no name or email address. | Unlocking paid features and restoring purchases | Performance of a contract |
+| Moderation data | Readers you have blocked; any abuse report you file — its reason, your note, where you filed it (a conversation, a book club or a profile), and a snapshot of the reported reader's messages there; and, if we act on a report about you, what we did and a fingerprint (hash) of profile text or a photo we removed, so the same one cannot be put back. A username we remove stays reserved, so nobody can claim it again. Reports are read only by the Pocket Library operator, never by other readers, and the reported reader is not told who reported them. | Acting on reports and keeping blocks in force | Our legitimate interest in a safe service, and compliance with our legal obligations |
 | Support requests and catalog feedback | Your account identifier, what the request is about, your note, and when you sent it. A request sent from the Support screen also carries your app and iOS version; a book report carries the ISBN, issue reason, and the current title or cover URL instead. A book you add yourself carries the details you typed and whether you chose "Credit me". We store our reply, whether we resolved or closed it, and when. You can see your requests and our replies under Support → Your requests. | Answering your request, and investigating and correcting book metadata | Our legitimate interest in a reliable, functioning catalog and in answering the people who use it |
 | Technical and security data | Error information, security rule denials | Keeping the app working | Our legitimate interest in a secure, functioning app |
 
-Camera access is used to scan ISBN barcodes and book spines, and to photograph a book's cover when you choose to. Scanning happens entirely on your device — scan images are never uploaded to us or to anyone else, and we never store them. A cover photo you take is stored with your own copy of the book, visible only to you.
+Camera access is used to scan ISBN barcodes and book spines, to photograph a book's cover when you choose to, and to take a profile or book club photo. Scanning happens entirely on your device — scan images are never uploaded to us or to anyone else, and we never store them. A cover photo you take is stored with your own copy of the book, visible only to you. A profile or book club photo is uploaded, because other readers see it.
 
-Before your name, username, bio, shelf caption, a book club's name or a message is posted, the app checks it on your device against a list of objectionable words; nothing is sent anywhere for that check. When you set a new profile photo or book club picture, our server sends it to **Google Cloud Vision SafeSearch**, which rates how likely it is to be sexual or violent, and a photo it flags is removed. Google uses the image only to return that rating.
+Before your name, username, bio, shelf caption, a book club's name, a message or a book title you type in is posted, the app checks it on your device against a list of objectionable words; nothing is sent anywhere for that check. A name supplied by Sign in with Apple or Google goes through the same check. When you set a new profile photo or book club picture, our server sends it to **Google Cloud Vision SafeSearch** in the EU, which rates how likely it is to be sexual or violent, and a photo it flags is removed. The app asks before the first photo you pick is sent. Google uses the image only to return that rating. The Google profile photo you sign up with comes from Google and is not sent. Screening is limited to twenty photos per reader a day; a photo set past that limit is removed without being screened.
 
 ## Books you add to the catalogue
 
@@ -57,28 +57,27 @@ If you need a guarantee that no operator can technically read your messages, use
 
 ## Where your data is stored
 
-Your library, profile, friend data and messages are stored in Google Cloud Firestore in a **European multi-region** (Belgium and the Netherlands), and the server functions that send notifications run in Belgium. Your core app data therefore stays in the EU.
+Your library, profile, friend data and messages are stored in Google Cloud Firestore in a **European multi-region** (Belgium and the Netherlands), the server functions that send notifications run in Belgium, and photo screening uses Google Cloud Vision's EU endpoint. Your core app data therefore stays in the EU.
 
 Some of our providers process limited data outside the EEA, principally in the United States:
 
 - **Firebase Authentication** (Google) processes sign-in identifiers and email addresses.
 - **Firebase Cloud Messaging** (Google) processes device tokens and notification payloads.
 - **RevenueCat** processes subscription status and an account identifier.
-- **Google Cloud Vision** processes a new profile or book club photo to screen it.
 - **Google Sign-In** and **Sign in with Apple** process your sign-in when you choose them.
 
 Where personal data is transferred outside the EEA or the UK, it is covered by the European Commission's Standard Contractual Clauses under the data processing terms we have accepted with each provider.
 
 ## Who else processes your data
 
-We use the following providers as data processors, each under their own data processing terms:
+We use the following providers as data processors, each under data processing terms that require them to protect your data to the same standard as this policy:
 
 - **Google (Firebase Authentication, Cloud Firestore, Cloud Messaging, Cloud Functions, Installations, Cloud Vision)** — authentication, data storage, notifications, and screening new profile and book club photos.
 - **Google Sign-In** — when you choose to sign in with Google.
 - **Apple** — Sign in with Apple, and App Store purchase processing.
 - **RevenueCat** — subscription entitlement management.
 
-We also query **Open Library**, **Google Books** and **ISBNdb** to look up book metadata from ISBNs. These lookups send the ISBN or search term only. They do not carry your account identifier, your name, or anything else that identifies you.
+We also query **Open Library** and **ISBNdb** to look up book metadata from ISBNs, and load book covers from their servers. These requests carry the ISBN or search term, and, like any request over the internet, your device's network address. They do not carry your account identifier, your name, or anything else that identifies you.
 
 Payment card details are handled entirely by Apple. We never see or store them.
 
@@ -91,10 +90,11 @@ Payment card details are handled entirely by Apple. We never see or store them.
 - **Activity likes** are kept until you remove the like, the friendship ends, either reader blocks the other, the activity is deleted, or either account is deleted. Anyone who can see the activity can like it, and sees its like count and their own like state; the activity's owner is notified with the display name of each reader who likes it. No list of likers is exposed.
 - **Book-borrow requests** are visible only to the two readers and contain public book and identity snapshots, not private shelf locations, notes or reading progress. Pending requests become unavailable or are removed when the copy is hidden, deleted or lent, or when the friendship ends or either reader blocks the other. Resolved requests remain in the inbox while the friendship and exposed book remain, and are removed when either account is deleted.
 - **Shared book loans** remain visible to the lender and borrower after an unfriend or block so either person can record the physical book's return. Returned loans remain in both readers' histories until either account is deleted, at which point the shared record is removed.
-- **Push tokens** are kept until you disable notifications, sign out, or delete your account.
+- **Push tokens** are kept while notifications are allowed for the app. Turning them off in iOS Settings, signing out or deleting your account removes this device's token.
 - **Abuse reports** are kept for as long as we need them to act on the report and to recognise repeat behaviour, and no longer than two years.
 - **Moderation fingerprints** of profile text we removed are deleted with your account; those of removed photos are kept for up to two years. A fingerprint is a hash, not the text or the photo.
-- **Support requests and catalog feedback** are kept until we have acted on them, and no longer than two years. They are removed when you delete your account, and you can ask us to delete any one of them.
+- **Support requests and catalog feedback** are kept so you can read our reply under Support → Your requests, and no longer than two years after you last sent them. They are removed when you delete your account, and you can ask us to delete any one of them.
+- **Subscription records** at RevenueCat are kept while your account exists and deleted with it. Apple keeps its own record of your purchases.
 - **Deleted data** is removed from our live database immediately. Firestore retains a one-hour version history for disaster recovery, after which deleted data is unrecoverable.
 
 ## Your rights
@@ -103,13 +103,13 @@ Under the GDPR you have the right to:
 
 - **Access** the personal data we hold about you, and receive a copy of it.
 - **Rectify** data that is inaccurate or incomplete — most of it you can edit directly in the app.
-- **Erase** your data. You can delete your account in the app at any time, from Settings. This removes your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friend records, book club memberships, push tokens, username reservation and every conversation you are part of — except that in a conversation someone has blocked you from, it removes the messages you sent and leaves theirs — and it deletes your sign-in.
+- **Erase** your data. You can delete your account in the app at any time: tap your avatar, then Account. This removes your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friend records, book club memberships, push tokens, username reservation and every conversation you are part of — except that in a conversation someone has blocked you from, it removes the messages you sent and leaves theirs — and it deletes your sign-in, revokes Pocket Library's access to your Google account if you signed in with Google, and deletes your subscription record at RevenueCat. Abuse reports are the exception: a report you filed or one about you is kept for the period above, so we can recognise repeat behaviour.
 - **Restrict** or **object to** our processing where we rely on legitimate interests.
-- **Port** your data. Settings has an "Export my data" option that produces a JSON file containing your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friends, book clubs and conversations (only your own messages in a conversation someone has blocked you from), which you can save or send anywhere you like.
+- **Port** your data. The Account screen has an "Export my data" option that produces a JSON file containing your profile, library, notes, locations, wishlist, reading activity and activity likes, book-borrow requests, shared book loans, support requests and catalog feedback, friends, book clubs and conversations (only your own messages in a conversation someone has blocked you from), which you can save or send anywhere you like.
 - **Withdraw consent** at any time where we rely on it, such as notifications, without affecting processing carried out before you withdrew it.
 - **Complain** to your local data protection supervisory authority. In the EU you can find yours at edpb.europa.eu; in the UK it is the Information Commissioner's Office at ico.org.uk.
 
-Account deletion and data export are both available in the app, under Settings. For access, rectification, restriction or objection requests, email us at the address above and we will respond within one month.
+Account deletion and data export are both available in the app, on the Account screen. A suspended account cannot sign in to use either, so if yours is suspended, email us and we will delete or export your data for you. For access, rectification, restriction or objection requests, email us at the address above and we will respond within one month.
 
 One limitation we want to be transparent about: if you sent a book club invitation that the recipient has not yet answered, your display name may remain in their pending invitations after you delete your account, until that invitation is acted on. Email us and we will remove it.
 
