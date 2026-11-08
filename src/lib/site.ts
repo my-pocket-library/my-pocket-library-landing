@@ -27,7 +27,7 @@ export const CONTACT_EMAIL = "hasanharman33@gmail.com";
  * URL).
  */
 // `as` keeps the declared type: an annotated `= null` would narrow to `null`.
-export const APP_STORE_URL = null as string | null;
+export const APP_STORE_URL = "https://apps.apple.com/app/id6769303550" as string | null;
 
 export const APP_STORE_ID = APP_STORE_URL?.match(/\/id(\d+)/)?.[1] ?? null;
 
