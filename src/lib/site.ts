@@ -73,3 +73,13 @@ export function pageMetadata({
     twitter: { ...TWITTER_BASE, title: fullTitle, description },
   };
 }
+
+/** Launch-week offer code (App Store Connect → Yearly → Offer Codes).
+ *  The banner hides itself after `endsAt`; remove this and the banner once
+ *  the week is over. Apple caps redemptions at 1,000. */
+export const LAUNCH_OFFER = {
+  code: "LAUNCH30",
+  url: "https://apps.apple.com/redeem?ctx=offercodes&id=6769303550&code=LAUNCH30",
+  // The code expires at the end of Nov 15 (Pacific time).
+  endsAt: Date.parse("2026-11-16T08:00:00Z"),
+};
