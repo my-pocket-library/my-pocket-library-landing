@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { AppStoreBadge } from "@/components/app-store-badge";
 import { HeroScene } from "@/components/hero-scene";
+import { LaunchOffer } from "@/components/launch-offer";
 
 // Dev-only live controls for the scene; never part of a production build.
 const Tweakpane = dynamic(
@@ -18,6 +19,7 @@ export function Hero() {
       <HeroScene />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center px-6 pt-28 text-center md:pt-36">
+        <LaunchOffer />
         <h1 className="font-serif text-balance text-[clamp(2.5rem,10vw,3rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink md:text-7xl">
           Your library. <span className="italic">In your pocket.</span>
         </h1>
