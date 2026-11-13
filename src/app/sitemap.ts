@@ -23,5 +23,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "yearly",
       priority: 0.5,
     },
+    {
+      url: `${SITE_URL}/delete-account`,
+      lastModified: new Date("2026-11-13"),
+      changeFrequency: "yearly",
+      priority: 0.5,
+    },
   ];
 }

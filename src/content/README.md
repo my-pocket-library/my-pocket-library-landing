@@ -24,3 +24,7 @@ can remove reported content and suspend an account, and ISBNdb is named; the
 Terms' description of blocking was corrected to match the privacy policy.
 
 FAQ and support copy (`faq.mdx`, `support.mdx`) is based on these documents.
+
+`delete-account.mdx` (`/delete-account`) is the account deletion URL Google
+Play's Data safety form requires: it must work without the app installed, so
+keep its deleted and retained lists in step with the privacy policy's.
