@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 
+// Rendered once at build time for the static export.
+export const dynamic = "force-static";
+
 // lastModified tracks content changes, so bump a date when that page's
 // copy changes (the legal pages match their effective dates).
 export default function sitemap(): MetadataRoute.Sitemap {
