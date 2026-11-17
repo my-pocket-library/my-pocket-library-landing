@@ -43,3 +43,6 @@ next-env.d.ts
 # local dev artifacts
 .playwright-mcp/
 /hero-*.png
+
+# cloudflare
+.wrangler

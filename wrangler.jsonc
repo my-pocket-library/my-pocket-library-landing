@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Static site: `next build` exports to out/ and Cloudflare serves it as-is (no Worker code).
+  // public/_headers sets the security headers.
+  "name": "mypocketlibrary",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "out", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page" },
+  "workers_dev": true,
+  // www is the canonical host (SITE_URL); a Cloudflare redirect rule sends the bare domain to it.
+  "routes": [
+    { "pattern": "www.mypocketlibrary.app", "custom_domain": true },
+    { "pattern": "mypocketlibrary.app", "custom_domain": true }
+  ]
+}
